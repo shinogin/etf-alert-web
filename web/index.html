@@ -24,6 +24,10 @@
   .chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
   .chip { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: #8882; white-space: nowrap; }
   .meta { font-size: 11px; opacity: 0.65; }
+  .filter-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .filter-bar select { padding: 6px 8px; border-radius: 8px; border: 1px solid #8886; background: Canvas; color: inherit; font-size: 12px; }
+  .filter-check { display: flex; align-items: center; gap: 4px; font-size: 12px; background: #8882; padding: 6px 10px; border-radius: 8px; }
+  .chg-badge { font-size: 12px; font-weight: 600; margin-top: 2px; }
   .pct-down { color: #d33; }
   .pct-up, .pct-flat { color: inherit; }
   .toggle { padding: 6px 10px; border-radius: 6px; border: 1px solid #8886; background: none; font-size: 12px; }
@@ -58,6 +62,26 @@
 
 <section id="catalog">
   <input type="search" id="search-box" placeholder="銘柄名・コード・愛称・運用会社・指数で検索" />
+  <div class="filter-bar">
+    <select id="filter-category">
+      <option value="">すべてのジャンル</option>
+      <option value="国内株式">国内株式</option>
+      <option value="外国株式">外国株式</option>
+      <option value="債券">債券</option>
+      <option value="REIT">REIT</option>
+      <option value="コモディティ">コモディティ</option>
+      <option value="その他">その他</option>
+    </select>
+    <label class="filter-check"><input type="checkbox" id="filter-leveraged" /> レバレッジ</label>
+    <label class="filter-check"><input type="checkbox" id="filter-inverse" /> インバース</label>
+    <select id="sort-select">
+      <option value="name">名称順</option>
+      <option value="code">コード順</option>
+      <option value="expense_asc">信託報酬が低い順</option>
+      <option value="aum_desc">純資産が大きい順</option>
+      <option value="change_asc">前日比(下落が大きい順)</option>
+    </select>
+  </div>
   <div id="catalog-list"></div>
 </section>
 
