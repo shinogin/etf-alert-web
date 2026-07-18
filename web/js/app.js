@@ -153,8 +153,10 @@ function applyCatalogView() {
   const q = document.getElementById("search-box").value.trim().toLowerCase();
   const category = document.getElementById("filter-category").value;
   const theme = document.getElementById("filter-theme").value;
-  const expenseMaxRaw = document.getElementById("filter-expense-max").value;
-  const expenseMax = expenseMaxRaw === "" ? null : parseFloat(expenseMaxRaw);
+  const expenseSlider = parseInt(document.getElementById("filter-expense-max").value, 10);
+  const expenseMax = expenseSlider >= 250 ? null : expenseSlider / 100;
+  document.getElementById("expense-max-label").textContent =
+    expenseMax == null ? "上限なし" : expenseMax.toFixed(2) + "%以下";
   const onlyLev = document.getElementById("filter-leveraged").checked;
   const onlyInv = document.getElementById("filter-inverse").checked;
   const sortKey = document.getElementById("sort-select").value;
