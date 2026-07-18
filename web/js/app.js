@@ -38,19 +38,51 @@ async function loadCatalog() {
   applyCatalogView();
 }
 
+const THEME_GROUPS = {
+  "ジャンル(詳細)": ["日本株（市場別）", "日本株（業種別）", "日本株（規模別）", "日本株（テーマ別）", "外国株", "国内債券", "外国債券", "不動産（REIT）", "商品・商品指数", "商品(外国投資法人債券)", "エンハンスト型", "レバレッジ型・インバース型"],
+  "セクター・業種": ["半導体", "金融", "自動車", "通信", "ゲーム", "食品", "小売", "バイオ", "インフラ", "物流", "銀行"],
+  "投資スタイル": ["高配当", "ESG", "グロース株", "バリュー株", "中小型株"],
+  "地域": ["米国", "中国", "インド", "新興国"],
+  "コモディティ": ["原油", "プラチナ", "シルバー", "天然ガス", "農産物"],
+  "先端テクノロジー": ["AI", "ロボティクス", "電気自動車(EV)", "デジタル"],
+};
+
 function populateThemeFilter() {
   const excluded = new Set(["レバレッジ", "インバース"]);
-  const themes = new Set();
+  const present = new Set();
   catalogCache.forEach((en) => {
     (en.themes || []).forEach((t) => {
-      if (t && !excluded.has(t)) themes.add(t);
+      if (t && !excluded.has(t)) present.add(t);
     });
   });
-  const sorted = Array.from(themes).sort((a, b) => a.localeCompare(b, "ja"));
+
   const select = document.getElementById("filter-theme");
-  select.innerHTML =
-    '<option value="">すべてのテーマ</option>' +
-    sorted.map((t) => `<option value="${t}">${t}</option>`).join("");
+  let html = '<option value="">すべてのテーマ</option>';
+  const usedThemes = new Set();
+
+  Object.entries(THEME_GROUPS).forEach(([groupLabel, themeList]) => {
+    const itemsInGroup = themeList.filter((t) => present.has(t));
+    if (itemsInGroup.length === 0) return;
+    html += `<optgroup label="${groupLabel}">`;
+    itemsInGroup.forEach((t) => {
+      html += `<option value="${t}">${t}</option>`;
+      usedThemes.add(t);
+    });
+    html += `</optgroup>`;
+  });
+
+  const others = Array.from(present)
+    .filter((t) => !usedThemes.has(t))
+    .sort((a, b) => a.localeCompare(b, "ja"));
+  if (others.length > 0) {
+    html += `<optgroup label="その他">`;
+    others.forEach((t) => {
+      html += `<option value="${t}">${t}</option>`;
+    });
+    html += `</optgroup>`;
+  }
+
+  select.innerHTML = html;
 }
 
 async function refreshUserStatesCache() {
