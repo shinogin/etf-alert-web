@@ -23,6 +23,8 @@ function fmtPct(pct) {
 
 // ---------- カタログ ----------
 let catalogCache = [];
+let userStatesCache = [];
+let userStatesByCode = {};
 
 async function loadCatalog() {
   const { data, error } = await sb.from("etf_catalog").select("*").order("code");
@@ -31,7 +33,13 @@ async function loadCatalog() {
     return;
   }
   catalogCache = data || [];
-  renderCatalog(catalogCache);
+  await refreshUserStatesCache();
+  applyCatalogView();
+}
+
+async function refreshUserStatesCache() {
+  userStatesCache = await loadUserStates();
+  userStatesByCode = Object.fromEntries(userStatesCache.map((s) => [s.code, s]));
 }
 
 async function loadUserStates() {
@@ -60,6 +68,14 @@ function tagChips(entry) {
     .join("");
 }
 
+function chgBadge(entry) {
+  const state = userStatesByCode[entry.code];
+  if (!state || !state.is_watched || state.last_change_pct == null) {
+    return `<div class="chg-badge" style="opacity:0.4;">前日比 —</div>`;
+  }
+  return `<div class="chg-badge ${pctClass(state.last_change_pct)}">前日比 ${fmtPct(state.last_change_pct)}</div>`;
+}
+
 function renderCatalog(list) {
   const container = document.getElementById("catalog-list");
   container.innerHTML = "";
@@ -75,6 +91,7 @@ function renderCatalog(list) {
           信託報酬 ${entry.expense_ratio != null ? entry.expense_ratio.toFixed(3) + "%" : "—"}
           ／ 純資産 ${fmtAum(entry.aum)}
         </div>
+        ${chgBadge(entry)}
       </div>
       <div class="catalog-actions">
         <button class="toggle" data-action="watch" data-code="${entry.code}">監視</button>
@@ -85,12 +102,10 @@ function renderCatalog(list) {
   refreshToggleStates();
 }
 
-async function refreshToggleStates() {
-  const states = await loadUserStates();
-  const byCode = Object.fromEntries(states.map((s) => [s.code, s]));
+function refreshToggleStates() {
   document.querySelectorAll("#catalog-list .toggle").forEach((btn) => {
     const code = btn.dataset.code;
-    const s = byCode[code];
+    const s = userStatesByCode[code];
     const isOn = btn.dataset.action === "watch" ? s?.is_watched : s?.is_favorite;
     btn.classList.toggle("on", !!isOn);
   });
@@ -101,8 +116,7 @@ document.getElementById("catalog-list").addEventListener("click", async (e) => {
   if (!btn) return;
   const code = btn.dataset.code;
   const action = btn.dataset.action;
-  const states = await loadUserStates();
-  let state = states.find((s) => s.code === code);
+  let state = userStatesByCode[code];
   const current = state ? (action === "watch" ? state.is_watched : state.is_favorite) : false;
 
   if (!state) {
@@ -115,21 +129,56 @@ document.getElementById("catalog-list").addEventListener("click", async (e) => {
     const field = action === "watch" ? "is_watched" : "is_favorite";
     await sb.from("etf_user_state").update({ [field]: !current }).eq("code", code);
   }
-  refreshToggleStates();
+  await refreshUserStatesCache();
+  applyCatalogView();
 });
 
-document.getElementById("search-box").addEventListener("input", (e) => {
-  const q = e.target.value.trim().toLowerCase();
-  if (!q) return renderCatalog(catalogCache);
-  const filtered = catalogCache.filter(
-    (en) =>
-      en.name.toLowerCase().includes(q) ||
-      en.code.includes(q) ||
-      (en.nickname || "").toLowerCase().includes(q) ||
-      en.issuer.toLowerCase().includes(q) ||
-      en.index_name.toLowerCase().includes(q)
-  );
-  renderCatalog(filtered);
+function applyCatalogView() {
+  const q = document.getElementById("search-box").value.trim().toLowerCase();
+  const category = document.getElementById("filter-category").value;
+  const onlyLev = document.getElementById("filter-leveraged").checked;
+  const onlyInv = document.getElementById("filter-inverse").checked;
+  const sortKey = document.getElementById("sort-select").value;
+
+  let list = catalogCache.filter((en) => {
+    if (q) {
+      const hit =
+        en.name.toLowerCase().includes(q) ||
+        en.code.toLowerCase().includes(q) ||
+        (en.nickname || "").toLowerCase().includes(q) ||
+        en.issuer.toLowerCase().includes(q) ||
+        en.index_name.toLowerCase().includes(q);
+      if (!hit) return false;
+    }
+    if (category && en.category !== category) return false;
+    if (onlyLev && !en.is_leveraged) return false;
+    if (onlyInv && !en.is_inverse) return false;
+    return true;
+  });
+
+  list = list.slice().sort((a, b) => {
+    if (sortKey === "code") return a.code.localeCompare(b.code);
+    if (sortKey === "expense_asc") return (a.expense_ratio ?? Infinity) - (b.expense_ratio ?? Infinity);
+    if (sortKey === "aum_desc") return (b.aum ?? 0) - (a.aum ?? 0);
+    if (sortKey === "change_asc") {
+      const ca = userStatesByCode[a.code]?.last_change_pct;
+      const cb = userStatesByCode[b.code]?.last_change_pct;
+      if (ca == null && cb == null) return 0;
+      if (ca == null) return 1;
+      if (cb == null) return -1;
+      return ca - cb;
+    }
+    return a.name.localeCompare(b.name, "ja");
+  });
+
+  renderCatalog(list);
+}
+
+["search-box"].forEach((id) => {
+  document.getElementById(id).addEventListener("input", applyCatalogView);
+});
+["filter-category", "filter-leveraged", "filter-inverse", "sort-select"].forEach((id) => {
+  document.getElementById(id).addEventListener("change", applyCatalogView);
 });
 
 // ---------- ホーム ----------
