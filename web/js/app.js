@@ -33,8 +33,24 @@ async function loadCatalog() {
     return;
   }
   catalogCache = data || [];
+  populateThemeFilter();
   await refreshUserStatesCache();
   applyCatalogView();
+}
+
+function populateThemeFilter() {
+  const excluded = new Set(["レバレッジ", "インバース"]);
+  const themes = new Set();
+  catalogCache.forEach((en) => {
+    (en.themes || []).forEach((t) => {
+      if (t && !excluded.has(t)) themes.add(t);
+    });
+  });
+  const sorted = Array.from(themes).sort((a, b) => a.localeCompare(b, "ja"));
+  const select = document.getElementById("filter-theme");
+  select.innerHTML =
+    '<option value="">すべてのテーマ</option>' +
+    sorted.map((t) => `<option value="${t}">${t}</option>`).join("");
 }
 
 async function refreshUserStatesCache() {
@@ -136,6 +152,9 @@ document.getElementById("catalog-list").addEventListener("click", async (e) => {
 function applyCatalogView() {
   const q = document.getElementById("search-box").value.trim().toLowerCase();
   const category = document.getElementById("filter-category").value;
+  const theme = document.getElementById("filter-theme").value;
+  const expenseMaxRaw = document.getElementById("filter-expense-max").value;
+  const expenseMax = expenseMaxRaw === "" ? null : parseFloat(expenseMaxRaw);
   const onlyLev = document.getElementById("filter-leveraged").checked;
   const onlyInv = document.getElementById("filter-inverse").checked;
   const sortKey = document.getElementById("sort-select").value;
@@ -151,6 +170,10 @@ function applyCatalogView() {
       if (!hit) return false;
     }
     if (category && en.category !== category) return false;
+    if (theme && !(en.themes || []).includes(theme)) return false;
+    if (expenseMax != null) {
+      if (en.expense_ratio == null || en.expense_ratio > expenseMax) return false;
+    }
     if (onlyLev && !en.is_leveraged) return false;
     if (onlyInv && !en.is_inverse) return false;
     return true;
@@ -174,10 +197,10 @@ function applyCatalogView() {
   renderCatalog(list);
 }
 
-["search-box"].forEach((id) => {
+["search-box", "filter-expense-max"].forEach((id) => {
   document.getElementById(id).addEventListener("input", applyCatalogView);
 });
-["filter-category", "filter-leveraged", "filter-inverse", "sort-select"].forEach((id) => {
+["filter-category", "filter-theme", "filter-leveraged", "filter-inverse", "sort-select"].forEach((id) => {
   document.getElementById(id).addEventListener("change", applyCatalogView);
 });
 
