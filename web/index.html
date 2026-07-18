@@ -26,7 +26,9 @@
   .meta { font-size: 11px; opacity: 0.65; }
   .filter-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
   .filter-bar select { padding: 6px 8px; border-radius: 8px; border: 1px solid #8886; background: Canvas; color: inherit; font-size: 12px; }
-  .filter-bar input[type="number"] { width: 100px; padding: 6px 8px; border-radius: 8px; border: 1px solid #8886; background: Canvas; color: inherit; font-size: 12px; }
+  .filter-slider { display: flex; align-items: center; gap: 6px; font-size: 12px; background: #8882; padding: 6px 10px; border-radius: 8px; }
+  .filter-slider input[type="range"] { width: 110px; }
+  .filter-slider #expense-max-label { min-width: 60px; text-align: right; opacity: 0.8; }
   .filter-check { display: flex; align-items: center; gap: 4px; font-size: 12px; background: #8882; padding: 6px 10px; border-radius: 8px; }
   .chg-badge { font-size: 12px; font-weight: 600; margin-top: 2px; }
   .pct-down { color: #d33; }
@@ -76,7 +78,11 @@
     <select id="filter-theme">
       <option value="">すべてのテーマ</option>
     </select>
-    <input type="number" id="filter-expense-max" placeholder="信託報酬%以下" step="0.01" min="0" />
+    <label class="filter-slider">
+      信託報酬上限
+      <span id="expense-max-label">上限なし</span>
+      <input type="range" id="filter-expense-max" min="0" max="250" step="1" value="250" />
+    </label>
     <label class="filter-check"><input type="checkbox" id="filter-leveraged" /> レバレッジ</label>
     <label class="filter-check"><input type="checkbox" id="filter-inverse" /> インバース</label>
     <select id="sort-select">
