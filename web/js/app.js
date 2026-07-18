@@ -39,18 +39,44 @@ async function loadUserStates() {
   return data || [];
 }
 
+function fmtAum(aum) {
+  if (!aum) return "—";
+  const oku = aum / 100000000;
+  if (oku >= 10000) return (oku / 10000).toFixed(1) + "兆円";
+  return Math.round(oku).toLocaleString() + "億円";
+}
+
+function tagChips(entry) {
+  const tags = [];
+  if (entry.category) tags.push(entry.category);
+  if (entry.is_leveraged) tags.push("レバレッジ");
+  if (entry.is_inverse) tags.push("インバース");
+  (entry.themes || []).forEach((t) => {
+    if (!tags.includes(t)) tags.push(t);
+  });
+  return tags
+    .slice(0, 4)
+    .map((t) => `<span class="chip">${t}</span>`)
+    .join("");
+}
+
 function renderCatalog(list) {
   const container = document.getElementById("catalog-list");
   container.innerHTML = "";
   list.forEach((entry) => {
     const row = document.createElement("div");
-    row.className = "row";
+    row.className = "row catalog-row";
     row.innerHTML = `
-      <div>
+      <div class="catalog-main">
         <div class="name">${entry.name}</div>
         <div class="code">${entry.code} / ${entry.issuer}</div>
+        <div class="chips">${tagChips(entry)}</div>
+        <div class="meta">
+          信託報酬 ${entry.expense_ratio != null ? entry.expense_ratio.toFixed(3) + "%" : "—"}
+          ／ 純資産 ${fmtAum(entry.aum)}
+        </div>
       </div>
-      <div>
+      <div class="catalog-actions">
         <button class="toggle" data-action="watch" data-code="${entry.code}">監視</button>
         <button class="toggle" data-action="favorite" data-code="${entry.code}">★</button>
       </div>`;
