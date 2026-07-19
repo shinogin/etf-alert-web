@@ -155,9 +155,23 @@ async function main() {
 
       const plan = (state.purchase_plan_item || []).find((p) => p.level === reached);
       const planText = plan ? `。計画: ${plan.amount.toLocaleString()}円` : "";
+
+      // リバウンド統計(過去10年バックテスト: 1306/1321/2558/1475平均、レベル到達後10営業日)
+      // 出典: 2026-07 実施のバックテスト(分割調整済み・分配金除く)
+      const REBOUND_STATS = {
+        "-2": { win: 73, avg: "+1.5" },
+        "-3": { win: 61, avg: "+0.5" },
+        "-5": { win: 59, avg: "+1.5" },
+        "-7": { win: 100, avg: "+12", note: "※過去7回のみ" },
+      };
+      const st = REBOUND_STATS[String(reached)];
+      const statText = st
+        ? `\n参考: 過去10年、このレベル後10営業日の勝率${st.win}%・平均${st.avg}%${st.note || ""}`
+        : "";
+
       const payload = JSON.stringify({
         title: state.code,
-        body: `前日比 ${changePct.toFixed(1)}%（${reached}%到達）${planText}`,
+        body: `前日比 ${changePct.toFixed(1)}%（${reached}%到達）${planText}${statText}`,
         code: state.code,
       });
 
