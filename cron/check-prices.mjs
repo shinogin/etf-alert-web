@@ -62,8 +62,12 @@ async function fetchYahooQuote(code) {
     const json = await res.json();
     const result = json?.chart?.result?.[0];
     const price = result?.meta?.regularMarketPrice;
+    const prevClose = result?.meta?.previousClose ?? result?.meta?.chartPreviousClose;
     if (typeof price !== "number" || Number.isNaN(price)) return null;
-    return price;
+    return {
+      price,
+      previousClose: typeof prevClose === "number" && !Number.isNaN(prevClose) ? prevClose : null,
+    };
   } catch (e) {
     console.warn(`${code}: Yahoo Finance取得エラー:`, e.message);
     return null;
@@ -106,13 +110,14 @@ async function main() {
       if (lastDay !== today) notifiedLevelToday = null;
     }
 
-    const close = await fetchYahooQuote(state.code);
-    if (close == null) {
+    const quote = await fetchYahooQuote(state.code);
+    if (quote == null) {
       console.warn(`${state.code}: 価格取得失敗、スキップ`);
       continue;
     }
+    const { price: close, previousClose: yahooPrevClose } = quote;
 
-    // 前営業日終値: 前回保存したdaily_priceの最新値。無ければ今回値で初期化(判定はスキップ)
+    // 前営業日終値: 自前のdaily_price履歴を優先。無ければYahoo Financeが返すprevious closeで代用。
     const { data: prevRows } = await supabase
       .from("daily_price")
       .select("*")
@@ -120,10 +125,10 @@ async function main() {
       .lt("date", today)
       .order("date", { ascending: false })
       .limit(1);
-    const previousClose = prevRows && prevRows[0] ? prevRows[0].close : null;
+    const previousClose = prevRows && prevRows[0] ? prevRows[0].close : yahooPrevClose;
 
     if (previousClose == null) {
-      // 初回: 前日終値が無いので判定せず記録のみ
+      // 前日終値が取得できない場合のみ判定せず記録のみ
       await supabase.from("daily_price").upsert(
         { code: state.code, date: today, close, change_pct: 0, reached_level: null, notified: false },
         { onConflict: "code,date" }
