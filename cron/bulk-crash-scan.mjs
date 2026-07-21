@@ -19,9 +19,9 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-// 「大暴落」とみなす閾値。通常の監視レベル(-3/-5/-7/-10%)よりさらに深い、
-// 数年に一度レベルの急落のみ拾う。
-const CRASH_THRESHOLD = -15;
+// 「大暴落」とみなす閾値。通常の監視レベル(-3/-5/-7/-10%)の最深値と同じ-7%を基準に、
+// 監視外の銘柄でもこのレベルの下落はログでハイライトする。
+const CRASH_THRESHOLD = -7;
 const BATCH_SIZE = 20;
 
 function isBusinessDayJST(date) {
