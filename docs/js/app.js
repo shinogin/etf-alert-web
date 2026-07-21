@@ -127,7 +127,7 @@ function tagChips(entry) {
 
 function chgBadge(entry) {
   const state = userStatesByCode[entry.code];
-  if (!state || !state.is_watched || state.last_change_pct == null) {
+  if (!state || state.last_change_pct == null) {
     return `<div class="chg-badge" style="opacity:0.4;">前日比 —</div>`;
   }
   return `<div class="chg-badge ${pctClass(state.last_change_pct)}">前日比 ${fmtPct(state.last_change_pct)}</div>`;
