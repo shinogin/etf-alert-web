@@ -1,6 +1,8 @@
-// 全ETFカタログを対象にした「大暴落」検知スクリプト。
-// 監視フラグに関係なく全銘柄をスキャンし、前日比が閾値を超えて急落した銘柄のみ
-// etf_user_state.last_price / last_change_pct を更新する(is_watched/is_favoriteは変更しない)。
+// 全ETFカタログを対象にした一括価格取得スクリプト。
+// 監視フラグに関係なく全銘柄をスキャンし、取得できた分は前日比(last_change_pct)を含めて
+// etf_user_state に全件保存する(is_watched/is_favoriteは変更しない)。
+// これによりカタログ画面の「前日比で並び替え」が全銘柄で機能するようになる。
+// 加えて、前日比が閾値を超えて急落した銘柄はログ上でハイライトする。
 // 監視銘柄向けのcheck-prices.mjsとは別に、1日1回(市場終了後)だけ実行する想定。
 // 理由: Yahoo Financeの一括取得エンドポイント(v7/finance/spark)は1回あたり約20銘柄が上限のため、
 // 全件(400件超)を頻繁に叩くとレート制限やブロックのリスクが高まる。
@@ -19,7 +21,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
 // 「大暴落」とみなす閾値。通常の監視レベル(-3/-5/-7/-10%)よりさらに深い、
 // 数年に一度レベルの急落のみ拾う。
-const CRASH_THRESHOLD = -7;
+const CRASH_THRESHOLD = -15;
 const BATCH_SIZE = 20;
 
 function isBusinessDayJST(date) {
@@ -94,26 +96,39 @@ async function main() {
   const batches = chunk(codes, BATCH_SIZE);
   console.log(`全${codes.length}銘柄を${batches.length}バッチでスキャンします`);
 
+  let updatedCount = 0;
   let crashCount = 0;
   for (const batch of batches) {
     const quotes = await fetchSparkBatch(batch);
+    if (quotes.length === 0) continue;
+
+    // バッチ内の全銘柄を1回のupsertでまとめて保存(取得できた分は全件保存する)
+    const rows = quotes.map((q) => ({
+      code: q.code,
+      last_price: q.price,
+      last_change_pct: q.changePct,
+      last_updated_at: now.toISOString(),
+    }));
+    const { error: upsertError } = await supabase
+      .from("etf_user_state")
+      .upsert(rows, { onConflict: "code", ignoreDuplicates: false });
+    if (upsertError) {
+      console.warn("保存エラー:", upsertError.message);
+    } else {
+      updatedCount += rows.length;
+    }
+
     for (const q of quotes) {
       if (q.changePct <= CRASH_THRESHOLD) {
         crashCount++;
         console.log(`🔴 大暴落検知: ${q.code} ${q.changePct.toFixed(1)}%`);
-        await supabase
-          .from("etf_user_state")
-          .upsert(
-            { code: q.code, last_price: q.price, last_change_pct: q.changePct, last_updated_at: now.toISOString() },
-            { onConflict: "code", ignoreDuplicates: false }
-          );
       }
     }
     // レート制限回避のため少し待機
     await new Promise((r) => setTimeout(r, 500));
   }
 
-  console.log(`スキャン完了。大暴落検知件数: ${crashCount}`);
+  console.log(`スキャン完了。保存件数: ${updatedCount} / 大暴落検知件数: ${crashCount}`);
 }
 
 main().catch((e) => {
