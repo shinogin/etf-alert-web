@@ -1,167 +1,161 @@
 <!DOCTYPE html>
 <html lang="ja">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ETF下落通知</title>
-  <link rel="manifest" href="manifest.json" />
-  <meta name="theme-color" content="#111111" />
-  <style>
-      :root { color-scheme: light dark; }
-      body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 0; padding: 0 12px 80px; }
-      header { position: sticky; top: 0; background: Canvas; padding: 12px 0; border-bottom: 1px solid #8883; }
-      h1 { font-size: 18px; margin: 0 0 8px; }
-      nav { display: flex; gap: 8px; }
-      nav button { flex: 1; padding: 10px; border: none; border-radius: 8px; background: #8882; font-size: 14px; }
-      nav button.active { background: #333; color: #fff; }
-      input[type="search"] { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #8886; margin: 8px 0; box-sizing: border-box; }
-      .row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #8882; }
-      .row .name { font-weight: 600; font-size: 14px; }
-      .row .code { font-size: 12px; opacity: 0.6; }
-      .catalog-row { align-items: flex-start; gap: 8px; }
-      .catalog-main { flex: 1; min-width: 0; }
-      .catalog-actions { display: flex; flex-direction: column; gap: 4px; }
-      .chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
-      .chip { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: #8882; white-space: nowrap; }
-      .meta { font-size: 11px; opacity: 0.65; }
-      .filter-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
-      .filter-bar select { padding: 6px 8px; border-radius: 8px; border: 1px solid #8886; background: Canvas; color: inherit; font-size: 12px; }
-      .filter-slider { display: flex; align-items: center; gap: 6px; font-size: 12px; background: #8882; padding: 6px 10px; border-radius: 8px; }
-      .filter-slider input[type="range"] { width: 110px; }
-      .filter-slider #expense-max-label { min-width: 60px; text-align: right; opacity: 0.8; }
-      .filter-check { display: flex; align-items: center; gap: 4px; font-size: 12px; background: #8882; padding: 6px 10px; border-radius: 8px; }
-      .chg-badge { font-size: 12px; font-weight: 600; margin-top: 2px; }
-      .pct-down { color: #d33; }
-      .pct-up, .pct-flat { color: inherit; }
-      .toggle { padding: 6px 10px; border-radius: 6px; border: 1px solid #8886; background: none; font-size: 12px; }
-      .toggle.on { background: #333; color: #fff; }
-      section { display: none; }
-      section.active { display: block; }
-      .empty { opacity: 0.6; padding: 20px 0; text-align: center; font-size: 14px; }
-      .card { border: 1px solid #8884; border-radius: 10px; padding: 12px; margin: 10px 0; }
-      .levels input { width: 100%; padding: 8px; box-sizing: border-box; }
-      .btn-primary { background: #333; color: #fff; border: none; padding: 10px 14px; border-radius: 8px; }
-      .detail-header { margin-bottom: 16px; }
-      .detail-header .name { font-size: 18px; font-weight: 700; }
-      .detail-header .code { font-size: 13px; opacity: 0.7; }
-      .detail-section { margin: 16px 0; padding: 12px 0; border-top: 1px solid #8882; }
-      .detail-section h3 { margin: 8px 0; font-size: 14px; font-weight: 600; }
-      .plan-row { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
-      .plan-row input { flex: 1; padding: 6px; border: 1px solid #8886; border-radius: 4px; }
-      .plan-row button { padding: 6px 10px; background: #8882; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; }
-      .btn-delete { background: #d333; color: #fff; }
-      .timeline-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #8884; font-size: 12px; }
-      .timeline-date { font-weight: 600; }
-      .timeline-price { opacity: 0.8; }
-    </style>
-  </head>
-  <body>
-    <header>
-        <h1>ETF下落通知</h1>
-      <nav>
-            <button data-tab="home" class="active">ホーム</button>button>
-            <button data-tab="catalog">カタログ</button>button>
-            <button data-tab="detail" style="display:none;">詳細</button>button>
-            <button data-tab="history">通知履歴</button>button>
-            <button data-tab="settings">設定</button>button>
-      </nav>
-    </header>
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ETF下落通知</title>
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#111111" />
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 0; padding: 0 12px 80px; }
+  header { position: sticky; top: 0; background: Canvas; padding: 12px 0; border-bottom: 1px solid #8883; }
+  h1 { font-size: 18px; margin: 0 0 8px; }
+  nav { display: flex; gap: 8px; }
+  nav button { flex: 1; padding: 10px; border: none; border-radius: 8px; background: #8882; font-size: 14px; }
+  nav button.active { background: #333; color: #fff; }
+  input[type="search"] { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #8886; margin: 8px 0; box-sizing: border-box; }
+  .row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #8882; }
+  .row .name { font-weight: 600; font-size: 14px; }
+  .row .code { font-size: 12px; opacity: 0.6; }
+  .catalog-row { align-items: flex-start; gap: 8px; }
+  .catalog-main { flex: 1; min-width: 0; }
+  .catalog-actions { display: flex; flex-direction: column; gap: 4px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
+  .chip { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: #8882; white-space: nowrap; }
+  .meta { font-size: 11px; opacity: 0.65; }
+  .filter-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .filter-bar select { padding: 6px 8px; border-radius: 8px; border: 1px solid #8886; background: Canvas; color: inherit; font-size: 12px; }
+  .filter-slider { display: flex; align-items: center; gap: 6px; font-size: 12px; background: #8882; padding: 6px 10px; border-radius: 8px; }
+  .filter-slider input[type="range"] { width: 110px; }
+  .filter-slider #expense-max-label { min-width: 60px; text-align: right; opacity: 0.8; }
+  .filter-check { display: flex; align-items: center; gap: 4px; font-size: 12px; background: #8882; padding: 6px 10px; border-radius: 8px; }
+  .chg-badge { font-size: 12px; font-weight: 600; margin-top: 2px; }
+  .pct-down { color: #d33; }
+  .pct-up, .pct-flat { color: inherit; }
+  .toggle { padding: 6px 10px; border-radius: 6px; border: 1px solid #8886; background: none; font-size: 12px; }
+  .toggle.on { background: #333; color: #fff; }
+  section { display: none; }
+  section.active { display: block; }
+  .empty { opacity: 0.6; padding: 20px 0; text-align: center; font-size: 14px; }
+  .card { border: 1px solid #8884; border-radius: 10px; padding: 12px; margin: 10px 0; }
+  .levels input { width: 100%; padding: 8px; box-sizing: border-box; }
+  .btn-primary { background: #333; color: #fff; border: none; padding: 10px 14px; border-radius: 8px; }
+  .detail-header { margin-bottom: 16px; }
+  .detail-header .name { font-size: 18px; font-weight: 700; }
+  .detail-header .code { font-size: 13px; opacity: 0.7; }
+  .detail-section { margin: 16px 0; padding: 12px 0; border-top: 1px solid #8882; }
+  .detail-section h3 { margin: 8px 0; font-size: 14px; font-weight: 600; }
+  .plan-row { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
+  .plan-row input { flex: 1; padding: 6px; border: 1px solid #8886; border-radius: 4px; }
+  .plan-row button { padding: 6px 10px; background: #8882; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; }
+  .btn-delete { background: #d333; color: #fff; }
+  .timeline-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #8884; font-size: 12px; }
+  .timeline-date { font-weight: 600; }
+  .timeline-price { opacity: 0.8; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ETF下落通知</h1>
+  <nav>
+    <button data-tab="home" class="active">ホーム</button>
+    <button data-tab="catalog">カタログ</button>
+    <button data-tab="detail" style="display:none;">詳細</button>
+    <button data-tab="history">通知履歴</button>
+    <button data-tab="settings">設定</button>
+  </nav>
+</header>
 
-    <section id="home" class="active">
-        <h2>今日の通知</h2>
-        <div id="today-list" class="empty">本日の通知はありません</div>div>
-        <h2>監視ETF</h2>
-        <div id="watched-list" class="empty">監視中のETFはありません</div>div>
-        <h2>お気に入り</h2>
-        <div id="favorite-list" class="empty">お気に入りはありません</div>div>
-    </section>section>
+<section id="home" class="active">
+  <h2>今日の通知</h2>
+  <div id="today-list" class="empty">本日の通知はありません</div>
+  <h2>監視ETF</h2>
+  <div id="watched-list" class="empty">監視中のETFはありません</div>
+  <h2>お気に入り</h2>
+  <div id="favorite-list" class="empty">お気に入りはありません</div>
+</section>
 
-    <section id="catalog">
-        <input type="search" id="search-box" placeholder="銘柄名・コード・愛称・運用会社・指数で検索" />
-        <div class="filter-bar">
-              <select id="filter-category">
-                      <option value="">すべてのジャンル</option>option>
-                      <option value="国内株式">国内株式</option>option>
-                      <option value="外国株式">外国株式</option>option>
-                      <option value="債券">債券</option>option>
-                      <option value="REIT">REIT</option>option>
-                      <option value="コモディティ">コモディティ</option>option>
-                      <option value="その他">その他</option>option>
-              </select>select>
-              <select id="filter-theme">
-                      <option value="">すべてのテーマ</option>option>
-              </select>select>
-              <label class="filter-slider">
-                      信託報酬上限
-                      <span id="expense-max-label">上限なし</span>span>
-                      <input type="range" id="filter-expense-max" min="0" max="250" step="1" value="250" />
-              </label>label>
-              <label class="filter-check"><input type="checkbox" id="filter-leveraged" /> レバレッジ</label>label>
-              <label class="filter-check"><input type="checkbox" id="filter-inverse" /> インバース</label>label>
-              <select id="sort-select">
-                      <option value="name">名称順</option>option>
-                      <option value="code">コード順</option>option>
-                      <option value="expense_asc">信託報酬が低い順</option>option>
-                      <option value="aum_desc">純資産が大きい順</option>option>
-                      <option value="change_asc">前日比(下落が大きい順)</option>option>
-              </select>select>
-        </div>div>
-        <div id="catalog-list"></div>div>
-    </section>section>
+<section id="catalog">
+  <input type="search" id="search-box" placeholder="銘柄名・コード・愛称・運用会社・指数で検索" />
+  <div class="filter-bar">
+    <select id="filter-category">
+      <option value="">すべてのジャンル</option>
+      <option value="国内株式">国内株式</option>
+      <option value="外国株式">外国株式</option>
+      <option value="債券">債券</option>
+      <option value="REIT">REIT</option>
+      <option value="コモディティ">コモディティ</option>
+      <option value="その他">その他</option>
+    </select>
+    <select id="filter-theme">
+      <option value="">すべてのテーマ</option>
+    </select>
+    <label class="filter-slider">
+      信託報酬上限
+      <span id="expense-max-label">上限なし</span>
+      <input type="range" id="filter-expense-max" min="0" max="250" step="1" value="250" />
+    </label>
+    <label class="filter-check"><input type="checkbox" id="filter-leveraged" /> レバレッジ</label>
+    <label class="filter-check"><input type="checkbox" id="filter-inverse" /> インバース</label>
+    <select id="sort-select">
+      <option value="name">名称順</option>
+      <option value="code">コード順</option>
+      <option value="expense_asc">信託報酬が低い順</option>
+      <option value="aum_desc">純資産が大きい順</option>
+      <option value="change_asc">前日比(下落が大きい順)</option>
+    </select>
+  </div>
+  <div id="catalog-list"></div>
+</section>
 
-    <section id="history">
-        <div id="history-list" class="empty">通知履歴はまだありません</div>div>
-    </section>section>
+<section id="history">
+  <div id="history-list" class="empty">通知履歴はまだありません</div>
+</section>
 
-    <section id="detail">
-        <button id="detail-back" style="padding:8px 12px; border:none; background:#8882; border-radius:6px; cursor:pointer; font-size:14px;">← 戻る</button>button>
-        <div id="detail-content" style="margin-top:12px;"></div>div>
-    </section>section>
+<section id="detail">
+  <button id="detail-back" style="padding:8px 12px; border:none; background:#8882; border-radius:6px; cursor:pointer; font-size:14px;">← 戻る</button>
+  <div id="detail-content" style="margin-top:12px;"></div>
+</section>
 
-    <section id="settings">
-        <div class="card">
-              <h3>プッシュ通知の登録</h3>
-              <p style="font-size:13px;">この端末で下落通知を受け取るには、まずこの端末を登録してください。</p>p>
-              <button id="enable-push" class="btn-primary">この端末で通知を受け取る</button>button>
-              <p id="push-status" style="font-size:12px;opacity:0.7;"></p>p>
-        </div>div>
+<section id="settings">
+  <div class="card">
+    <h3>プッシュ通知の登録</h3>
+    <p style="font-size:13px;">この端末で下落通知を受け取るには、まずこの端末を登録してください。</p>
+    <button id="enable-push" class="btn-primary">この端末で通知を受け取る</button>
+    <p id="push-status" style="font-size:12px;opacity:0.7;"></p>
+  </div>
 
-        <div class="card">
-              <h3>テスト通知</h3>
-              <p style="font-size:13px;">登録した端末に通知が届くか確認できます。</p>p>
-              <button id="send-test-notification" class="btn-primary">テスト通知を送信</button>button>
-              <p id="test-status" style="font-size:12px;opacity:0.7;"></p>p>
-        </div>div>
+  <div class="card">
+    <h3>テスト通知</h3>
+    <p style="font-size:13px;">登録した端末に通知が届くか確認できます。</p>
+    <button id="send-test-notification" class="btn-primary">テスト通知を送信</button>
+    <p id="test-status" style="font-size:12px;opacity:0.7;"></p>
+  </div>
 
-        <div class="card levels">
-              <h3>既定通知レベル</h3>
-              <label style="font-size:13px;">カンマ区切り、例: -2,-3,-5,-7</label>label>
-              <input id="default-levels" type="text" />
-              <button id="save-levels" class="btn-primary" style="margin-top:8px;">保存</button>button>
-        </div>div>
+  <div class="card levels">
+    <h3>既定通知レベル</h3>
+    <label style="font-size:13px;">カンマ区切り、例: -2,-3,-5,-7</label>
+    <input id="default-levels" type="text" />
+    <button id="save-levels" class="btn-primary" style="margin-top:8px;">保存</button>
+  </div>
 
-        <div class="card">
-              <h3>データエクスポート</h3>
-              <p style="font-size:12px; margin:8px 0;">監視中のETFをMarkdownでエクスポートして、AI（ChatGPT/Claude等）に分析させることができます。</p>p>
-              <button id="export-markdown-btn" class="btn-primary">Markdownでエクスポート</button>button>
-        </div>div>
+  <div class="card">
+    <h3>データエクスポート</h3>
+    <p style="font-size:12px; margin:8px 0;">監視中のETFをMarkdownでエクスポートして、AI（ChatGPT/Claude等）に分析させることができます。</p>
+    <button id="export-markdown-btn" class="btn-primary">Markdownでエクスポート</button>
+  </div>
 
-        <div class="card">
-              <p style="font-size:12px;opacity:0.7;">
-                      <strong>ご注意:</strong> 本アプリは投資助言を行うものではありません。投資判断はご自身の責任で行ってください。<br/>
-              通知は1日数回のバックグラウンドチェック(GitHub Actions)に依存するため、リアルタイム性はありません。また、通知の遅延・欠落が生じる可能性があります。
-              </p>p>
-        </div>div>
-    </section>section>
-  
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-  <script src="js/config.js"></script>
-  <script src="js/app.js"></script>
-  </body>
-</html>html>
-</strong>
-      </nav></h1>
-    </header>
-  </body>
-  </style></title>
-  </head>
+  <div class="card">
+    <p style="font-size:12px;opacity:0.7;">
+      <strong>ご注意:</strong> 本アプリは投資助言を行うものではありません。投資判断はご自身の責任で行ってください。<br/>
+      通知は1日数回のバックグラウンドチェック(GitHub Actions)に依存するため、リアルタイム性はありません。また、通知の遅延・欠落が生じる可能性があります。
+    </p>
+  </div>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
