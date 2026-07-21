@@ -1,0 +1,28 @@
+name: 大暴落一括検知
+
+on:
+  schedule:
+    # 平日 15:35 JST (東証終値確定後) = 06:35 UTC。監視外の全銘柄を1日1回だけスキャンする。
+    - cron: "35 6 * * 1-5"
+  workflow_dispatch: {}
+
+jobs:
+  bulk-crash-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: 依存関係インストール
+        working-directory: ./cron
+        run: npm install
+
+      - name: 大暴落一括検知実行
+        working-directory: ./cron
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: node bulk-crash-scan.mjs
