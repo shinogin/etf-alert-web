@@ -46,16 +46,28 @@ function decideLevel(changePct, levels, alreadyNotified) {
   return reached < alreadyNotified ? reached : null;
 }
 
-async function fetchStooqQuote(code) {
-  const url = `https://stooq.com/q/l/?s=${code}.jp&f=sd2t2ohlcv&e=csv`;
-  const res = await fetch(url, { headers: { "User-Agent": "ETFAlertWeb/1.0" } });
-  const text = await res.text();
-  const lines = text.trim().split("\n");
-  if (lines.length < 2) return null;
-  const fields = lines[1].split(",");
-  const close = parseFloat(fields[6]);
-  if (!close || fields[6] === "N/D") return null;
-  return close;
+async function fetchYahooQuote(code) {
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${code}.T`;
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+      },
+    });
+    if (!res.ok) {
+      console.warn(`${code}: Yahoo Finance HTTP ${res.status}`);
+      return null;
+    }
+    const json = await res.json();
+    const result = json?.chart?.result?.[0];
+    const price = result?.meta?.regularMarketPrice;
+    if (typeof price !== "number" || Number.isNaN(price)) return null;
+    return price;
+  } catch (e) {
+    console.warn(`${code}: Yahoo Finance取得エラー:`, e.message);
+    return null;
+  }
 }
 
 async function main() {
@@ -94,7 +106,7 @@ async function main() {
       if (lastDay !== today) notifiedLevelToday = null;
     }
 
-    const close = await fetchStooqQuote(state.code);
+    const close = await fetchYahooQuote(state.code);
     if (close == null) {
       console.warn(`${state.code}: 価格取得失敗、スキップ`);
       continue;
