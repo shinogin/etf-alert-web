@@ -31,6 +31,23 @@ function fmtPct(pct) {
 }
 
 // ---------- カタログ ----------
+// 流動性フィルターの既定閾値。どちらか一方でも下回れば「流動性が低い」とみなし、
+// 「流動性の低い銘柄も表示」がOFFの間はカタログから除外する。
+// - AUM(純資産総額): 10億円未満
+// - 売買代金(直近営業日、出来高×価格の概算): 1,000万円未満
+//   ※ turnoverは価格帯によらず実際の売買のしやすさを反映するためAUMより優先度が高い。
+//     ただしbulk-crash-scanの実行前などデータ未取得の銘柄はAUM基準のみで判定する。
+const LIQUIDITY_AUM_MIN = 1_000_000_000;
+const LIQUIDITY_TURNOVER_MIN = 10_000_000;
+
+function isIlliquid(entry) {
+  const aum = entry.aum ?? 0;
+  if (aum < LIQUIDITY_AUM_MIN) return true;
+  const turnover = userStatesByCode[entry.code]?.last_turnover;
+  if (turnover != null && turnover < LIQUIDITY_TURNOVER_MIN) return true;
+  return false;
+}
+
 let catalogCache = [];
 let userStatesCache = [];
 let userStatesByCode = {};
@@ -210,6 +227,7 @@ function applyCatalogView() {
     expenseMax == null ? "上限なし" : expenseMax.toFixed(2) + "%以下";
   const onlyLev = document.getElementById("filter-leveraged").checked;
   const onlyInv = document.getElementById("filter-inverse").checked;
+  const showIlliquid = document.getElementById("filter-show-illiquid").checked;
   const sortKey = document.getElementById("sort-select").value;
 
   let list = catalogCache.filter((en) => {
@@ -229,6 +247,7 @@ function applyCatalogView() {
     }
     if (onlyLev && !en.is_leveraged) return false;
     if (onlyInv && !en.is_inverse) return false;
+    if (!showIlliquid && isIlliquid(en)) return false;
     return true;
   });
 
@@ -519,7 +538,7 @@ async function updateUserState(code, updates) {
 ["search-box", "filter-expense-max"].forEach((id) => {
   document.getElementById(id).addEventListener("input", applyCatalogView);
 });
-["filter-category", "filter-theme", "filter-leveraged", "filter-inverse", "sort-select"].forEach((id) => {
+["filter-category", "filter-theme", "filter-leveraged", "filter-inverse", "filter-show-illiquid", "sort-select"].forEach((id) => {
   document.getElementById(id).addEventListener("change", applyCatalogView);
 });
 
