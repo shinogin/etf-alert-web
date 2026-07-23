@@ -64,9 +64,12 @@ async function fetchSparkBatch(codes) {
         const code = (meta?.symbol || r.symbol || "").replace(".T", "");
         const price = meta?.regularMarketPrice;
         const prevClose = meta?.chartPreviousClose ?? meta?.previousClose;
+        const volume = meta?.regularMarketVolume;
         if (typeof price !== "number" || typeof prevClose !== "number" || !prevClose) return null;
         const changePct = ((price - prevClose) / prevClose) * 100;
-        return { code, price, changePct };
+        // 売買代金(円) = 出来高 × 価格。流動性フィルターの判定に使う(カタログ画面)。
+        const turnover = typeof volume === "number" ? Math.round(volume * price) : null;
+        return { code, price, changePct, volume: typeof volume === "number" ? volume : null, turnover };
       })
       .filter(Boolean);
   } catch (e) {
@@ -107,6 +110,8 @@ async function main() {
       code: q.code,
       last_price: q.price,
       last_change_pct: q.changePct,
+      last_volume: q.volume,
+      last_turnover: q.turnover,
       last_updated_at: now.toISOString(),
     }));
     const { error: upsertError } = await supabase
