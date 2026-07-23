@@ -76,6 +76,31 @@ async function fetchYahooQuote(code) {
   }
 }
 
+// カテゴリ別デフォルト通知レベル。
+// バックテスト(2026-07時点、過去10年・流動性フィルター後)で、指数連動型とテーマ/セクター型は
+// 最良の閾値帯が異なることが分かったため、種別ごとに既定値を分ける。
+// 指数系: 段階的に-3/-5/-8%で買い増し(勝率76.9%/86.5%/88.7%、3ヶ月後平均+8.5/+13.9/+18.2%)
+// テーマ系: 段階的に-3/-7/-10%で買い増し(勝率65.0%/62.5%/65.5%、3ヶ月後平均+6.7/+7.3/+9.6%)
+const INDEX_DEFAULT_LEVELS = [-3, -5, -8];
+const THEME_DEFAULT_LEVELS = [-3, -7, -10];
+
+const BROAD_INDEX_KEYWORDS = [
+  "TOPIX", "日経225", "日経平均", "日経３００", "日経300",
+  "JPX日経400", "JPX 日経 400", "JPXプライム150", "JPX日経インデックス400",
+  "S&P500", "S&P 500", "NYダウ", "ダウ工業", "ナスダック100", "NASDAQ100", "NASDAQ-100",
+  "MSCI ACWI", "MSCI-KOKUSAI", "MSCIコクサイ", "MSCI コクサイ",
+  "FTSE 100", "DAX", "CSI300", "MSCIエマージング", "MSCI エマージング",
+];
+
+// レバレッジ/インバースはボラティリティ特性が別物なので、バックテスト対象外(=カテゴリ既定値なし)。
+// この場合はグローバル既定値(app_settings.default_alert_levels)にフォールバックする。
+function categoryDefaultLevels(catalogEntry) {
+  if (!catalogEntry || catalogEntry.is_leveraged || catalogEntry.is_inverse) return null;
+  const indexName = catalogEntry.index_name || "";
+  const isBroadIndex = BROAD_INDEX_KEYWORDS.some((kw) => indexName.includes(kw));
+  return isBroadIndex ? INDEX_DEFAULT_LEVELS : THEME_DEFAULT_LEVELS;
+}
+
 async function main() {
   const now = new Date();
   if (!isBusinessDayJST(now)) {
@@ -90,7 +115,7 @@ async function main() {
 
   const { data: watched, error } = await supabase
     .from("etf_user_state")
-    .select("*, purchase_plan_item(*)")
+    .select("*, purchase_plan_item(*), etf_catalog(index_name,is_leveraged,is_inverse)")
     .eq("is_watched", true);
 
   if (error) {
@@ -145,7 +170,9 @@ async function main() {
       continue;
     }
 
-    const levels = (state.custom_alert_levels ?? defaultLevels).slice().sort((a, b) => b - a);
+    const levels = (
+      state.custom_alert_levels ?? categoryDefaultLevels(state.etf_catalog) ?? defaultLevels
+    ).slice().sort((a, b) => b - a);
     const reached = decideLevel(changePct, levels, notifiedLevelToday);
 
     await supabase
