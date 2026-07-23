@@ -30,6 +30,24 @@ function fmtPct(pct) {
   return (pct > 0 ? "+" : "") + pct.toFixed(1) + "%";
 }
 
+// カテゴリ別デフォルト通知レベル(cron/check-prices.mjsと同じ基準)。
+// 表示上「空欄なら何が適用されるか」をユーザーに見せるためだけに使う(実際の判定はcron側)。
+const INDEX_DEFAULT_LEVELS = [-3, -5, -8];
+const THEME_DEFAULT_LEVELS = [-3, -7, -10];
+const BROAD_INDEX_KEYWORDS = [
+  "TOPIX", "日経225", "日経平均", "日経３００", "日経300",
+  "JPX日経400", "JPX 日経 400", "JPXプライム150", "JPX日経インデックス400",
+  "S&P500", "S&P 500", "NYダウ", "ダウ工業", "ナスダック100", "NASDAQ100", "NASDAQ-100",
+  "MSCI ACWI", "MSCI-KOKUSAI", "MSCIコクサイ", "MSCI コクサイ",
+  "FTSE 100", "DAX", "CSI300", "MSCIエマージング", "MSCI エマージング",
+];
+function categoryDefaultLevels(entry) {
+  if (!entry || entry.is_leveraged || entry.is_inverse) return null;
+  const idx = entry.index_name || "";
+  const isBroadIndex = BROAD_INDEX_KEYWORDS.some((kw) => idx.includes(kw));
+  return isBroadIndex ? INDEX_DEFAULT_LEVELS : THEME_DEFAULT_LEVELS;
+}
+
 // ---------- カタログ ----------
 // 流動性フィルターの既定閾値。どちらか一方でも下回れば「流動性が低い」とみなし、
 // 「流動性の低い銘柄も表示」がOFFの間はカタログから除外する。
@@ -332,7 +350,7 @@ async function showDetail(code) {
           <input type="text" id="custom-levels-${code}" value="${(state.custom_alert_levels || []).join(',')}" placeholder="例: -2,-3,-5,-7" style="width:200px; padding:4px; border:1px solid #8886; border-radius:4px;" />
           <button id="save-custom-levels-${code}" class="btn-primary" style="margin-left:8px;">保存</button>
         </div>
-        <div style="font-size:11px; opacity:0.7; margin-top:4px;">空の場合は既定値を使用</div>
+        <div style="font-size:11px; opacity:0.7; margin-top:4px;">空の場合は既定値(${(categoryDefaultLevels(entry) || [-3, -5, -7, -10]).join(', ')}%)を使用</div>
       </div>
     </div>
 
