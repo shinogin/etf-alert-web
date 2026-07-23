@@ -63,10 +63,12 @@ async function fetchYahooQuote(code) {
     const result = json?.chart?.result?.[0];
     const price = result?.meta?.regularMarketPrice;
     const prevClose = result?.meta?.previousClose ?? result?.meta?.chartPreviousClose;
+    const volume = result?.meta?.regularMarketVolume;
     if (typeof price !== "number" || Number.isNaN(price)) return null;
     return {
       price,
       previousClose: typeof prevClose === "number" && !Number.isNaN(prevClose) ? prevClose : null,
+      volume: typeof volume === "number" && !Number.isNaN(volume) ? volume : null,
     };
   } catch (e) {
     console.warn(`${code}: Yahoo Finance取得エラー:`, e.message);
@@ -115,7 +117,8 @@ async function main() {
       console.warn(`${state.code}: 価格取得失敗、スキップ`);
       continue;
     }
-    const { price: close, previousClose: yahooPrevClose } = quote;
+    const { price: close, previousClose: yahooPrevClose, volume } = quote;
+    const turnover = volume != null ? Math.round(volume * close) : null;
 
     // 前営業日終値: 自前のdaily_price履歴を優先。無ければYahoo Financeが返すprevious closeで代用。
     const { data: prevRows } = await supabase
@@ -150,6 +153,8 @@ async function main() {
       .update({
         last_price: close,
         last_change_pct: changePct,
+        last_volume: volume,
+        last_turnover: turnover,
         last_updated_at: now.toISOString(),
         notified_level_today: reached != null ? reached : notifiedLevelToday,
       })
