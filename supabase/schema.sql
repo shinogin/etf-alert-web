@@ -37,9 +37,15 @@ create table if not exists etf_user_state (
   notified_level_today numeric,
   last_price numeric,
   last_change_pct numeric,
+  last_volume bigint,
+  last_turnover bigint,
   last_updated_at timestamptz,
   created_at timestamptz not null default now()
 );
+
+-- 3b. 既存環境向け: 出来高・売買代金カラムを追加(流動性フィルター用)
+alter table etf_user_state add column if not exists last_volume bigint;
+alter table etf_user_state add column if not exists last_turnover bigint;
 
 -- 4. 買付計画
 create table if not exists purchase_plan_item (
