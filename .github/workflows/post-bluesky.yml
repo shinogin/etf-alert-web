@@ -1,0 +1,30 @@
+name: Bluesky自動投稿
+
+on:
+  schedule:
+    # 平日 15:42 JST (大暴落一括検知 15:35 の後) = 06:42 UTC
+    - cron: "42 6 * * 1-5"
+  workflow_dispatch: {}
+
+jobs:
+  post-bluesky:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: 依存関係インストール
+        working-directory: ./cron
+        run: npm install
+
+      - name: Bluesky投稿
+        working-directory: ./cron
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE }}
+          BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
+        run: node post-bluesky.mjs
