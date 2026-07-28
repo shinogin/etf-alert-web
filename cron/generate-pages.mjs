@@ -5,7 +5,7 @@
 // このスクリプトはSupabaseへの書き込みは一切行わない(読み取り専用)。
 
 import { createClient } from "@supabase/supabase-js";
-import { writeFileSync, mkdirSync, existsSync } from "fs";
+import { writeFileSync, mkdirSync, existsSync, readFileSync } from "fs";
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -18,6 +18,30 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 const OUT_ROOT = "../web";
 const SITE_URL = "https://shinogin.github.io/etf-alert-web";
+
+// アフィリエイトリンク設定を読み込む。urlが空の証券会社は表示しない。
+// (A8.netで提携承認が下りるまでは全て空 = 広告は一切表示されない状態)
+function loadActiveBrokers() {
+  try {
+    const raw = JSON.parse(readFileSync("./affiliate-links.json", "utf-8"));
+    return (raw.brokers || []).filter((b) => b.url && b.url.trim() !== "");
+  } catch (e) {
+    console.warn("affiliate-links.json の読み込みに失敗(広告なしで続行):", e.message);
+    return [];
+  }
+}
+const ACTIVE_BROKERS = loadActiveBrokers();
+
+function affiliateBlockHtml() {
+  if (ACTIVE_BROKERS.length === 0) return "";
+  const links = ACTIVE_BROKERS.map(
+    (b) =>
+      `<a class="cta" style="background:#8882;color:inherit !important;" href="${esc(
+        b.url
+      )}" rel="nofollow sponsored" target="_blank">［PR］${esc(b.name)}で口座開設</a>`
+  ).join("\n");
+  return `<h2>証券口座をお持ちでない方へ</h2>\n${links}\n<p style="font-size:11px;opacity:0.55;">［PR］上記はアフィリエイト広告を含みます。当サイトは投資助言を行うものではありません。</p>`;
+}
 
 // ---------- ユーティリティ ----------
 function esc(s) {
@@ -193,6 +217,8 @@ async function main() {
 
 <a class="cta" href="${SITE_URL}/?code=${esc(e.code)}">アプリでこの銘柄を監視・通知登録する</a>
 
+${affiliateBlockHtml()}
+
 <a class="back" href="${SITE_URL}/etf/">← 一覧に戻る</a>
 `;
 
@@ -269,6 +295,8 @@ ${rows}
   <tr><th>銘柄</th><th>期間</th><th>保有</th><th>リターン</th></tr>
   ${tradeRows || '<tr><td colspan="4">まだ決済済みの記録がありません</td></tr>'}
 </table>
+
+${affiliateBlockHtml()}
 
 <div class="note">
   本ページは投資助言ではなく、運営者個人の取引記録の開示です。過去の成績は将来の成果を保証しません。<br/>
