@@ -11,6 +11,9 @@ const POSITION_LABELS = {
   margin_short: "信用売り",
 };
 
+// アプリ内で実際に使われている通知レベルの全種類(既定値+カテゴリ別既定値の和集合)
+const ALERT_LEVEL_OPTIONS = [-2, -3, -5, -7, -8, -10];
+
 // ---------- ユーティリティ ----------
 function todayStr() {
   const d = new Date();
@@ -43,6 +46,15 @@ function catalogName(code) {
     (c) => c.code === code
   );
   return e ? e.name : "";
+}
+
+function alertLevelOptionsHtml(selected) {
+  const sel = selected == null || selected === "" ? "" : Number(selected);
+  let html = `<option value="" ${sel === "" ? "selected" : ""}>選択なし</option>`;
+  html += ALERT_LEVEL_OPTIONS.map(
+    (lvl) => `<option value="${lvl}" ${sel === lvl ? "selected" : ""}>${lvl}%</option>`
+  ).join("");
+  return html;
 }
 
 // ---------- 描画 ----------
@@ -217,7 +229,7 @@ function showTradeForm(prefill = {}) {
       <input id="tf-qty" type="number" step="1" inputmode="numeric" class="f-input" value="${prefill.qty || ""}" />
 
       <label class="f-label">きっかけのアラートレベル（任意）</label>
-      <input id="tf-level" type="number" step="0.1" inputmode="decimal" class="f-input" placeholder="-5" value="${prefill.level ?? ""}" />
+      <select id="tf-level" class="f-input">${alertLevelOptionsHtml(prefill.level)}</select>
 
       <label class="f-label">メモ（任意）</label>
       <input id="tf-memo" type="text" class="f-input" placeholder="リバウンド狙い" />
@@ -357,7 +369,7 @@ function showEditForm(t) {
       <input id="ef-qty" type="number" step="1" inputmode="numeric" class="f-input" value="${t.quantity}" />
 
       <label class="f-label">きっかけのアラートレベル（任意）</label>
-      <input id="ef-level" type="number" step="0.1" inputmode="decimal" class="f-input" value="${t.alert_level ?? ""}" />
+      <select id="ef-level" class="f-input">${alertLevelOptionsHtml(t.alert_level)}</select>
 
       <label class="f-label">メモ（任意）</label>
       <input id="ef-memo" type="text" class="f-input" value="${(t.memo || "").replace(/"/g, "&quot;")}" />
