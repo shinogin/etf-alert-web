@@ -1,0 +1,39 @@
+name: 公開ページ自動生成
+
+on:
+  schedule:
+    # 平日 15:50 JST (価格一括取得 15:35 の後) = 06:50 UTC
+    - cron: "50 6 * * 1-5"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  generate-pages:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: 依存関係インストール
+        working-directory: ./cron
+        run: npm install
+
+      - name: ページ生成
+        working-directory: ./cron
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: node generate-pages.mjs
+
+      - name: 変更をコミット
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add web/etf web/jisseki web/sitemap.xml
+          git diff --staged --quiet || git commit -m "chore: 公開ページを自動更新 [skip ci]"
+          git push
