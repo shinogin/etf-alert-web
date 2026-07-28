@@ -46,6 +46,8 @@ function catalogName(code) {
 }
 
 // ---------- 描画 ----------
+let tradesCache = [];
+
 async function loadTrades() {
   const root = document.getElementById("trades-body");
   root.innerHTML = '<div class="empty">読み込み中…</div>';
@@ -64,6 +66,7 @@ async function loadTrades() {
   }
 
   const trades = rows || [];
+  tradesCache = trades;
   const open = trades.filter((t) => !t.is_closed);
   const closed = trades.filter((t) => t.is_closed);
 
@@ -127,7 +130,10 @@ async function loadTrades() {
       html += `<div class="trade-line">現在 ${cur != null ? cur.toLocaleString() + "円" : "—"}
                　<span class="${pnlClass(up)}">${yen(up)}　${signPct(upPct)}</span></div>`;
       if (t.memo) html += `<div class="meta">${t.memo}</div>`;
-      html += `<button class="toggle trade-close-btn" data-id="${t.id}" style="margin-top:8px;">返済を記録</button>`;
+      html += `<div style="display:flex;gap:8px;margin-top:8px;">`;
+      html += `<button class="toggle trade-close-btn" data-id="${t.id}" style="flex:1;">返済を記録</button>`;
+      html += `<button class="toggle trade-edit-btn" data-id="${t.id}" style="flex:1;">編集</button>`;
+      html += `</div>`;
       html += "</div>";
     });
   }
@@ -145,7 +151,10 @@ async function loadTrades() {
       html += `<div class="trade-line">${t.entry_price.toLocaleString()} → ${t.exit_price.toLocaleString()}円 × ${t.quantity}株</div>`;
       html += `<div class="trade-line ${pnlClass(t.pnl)}" style="font-weight:600;">${yen(t.pnl)}　${signPct(t.return_pct)}</div>`;
       if (t.memo) html += `<div class="meta">${t.memo}</div>`;
-      html += `<button class="toggle btn-delete trade-del-btn" data-id="${t.id}" style="margin-top:8px;">削除</button>`;
+      html += `<div style="display:flex;gap:8px;margin-top:8px;">`;
+      html += `<button class="toggle trade-edit-btn" data-id="${t.id}" style="flex:1;">編集</button>`;
+      html += `<button class="toggle btn-delete trade-del-btn" data-id="${t.id}" style="flex:1;">削除</button>`;
+      html += `</div>`;
       html += "</div>";
     });
   }
@@ -167,6 +176,12 @@ function wireTradeEvents() {
   );
   document.querySelectorAll(".trade-del-btn").forEach((b) =>
     b.addEventListener("click", () => deleteTrade(Number(b.dataset.id)))
+  );
+  document.querySelectorAll(".trade-edit-btn").forEach((b) =>
+    b.addEventListener("click", () => {
+      const t = tradesCache.find((x) => x.id === Number(b.dataset.id));
+      if (t) showEditForm(t);
+    })
   );
 }
 
@@ -295,6 +310,118 @@ function showCloseForm(id) {
     await loadTrades();
   });
   wrap.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+// ---------- 編集フォーム（入力ミスの修正用） ----------
+function showEditForm(t) {
+  const wrap = document.getElementById("trade-form-wrap");
+  const cat = typeof catalogCache !== "undefined" ? catalogCache : [];
+  const options = cat
+    .map((c) => `<option value="${c.code}">${c.code} ${c.name}</option>`)
+    .join("");
+
+  const exitFieldsHtml = t.is_closed
+    ? `
+      <label class="f-label">返済日</label>
+      <input id="ef-exit-date" type="date" class="f-input" value="${t.exit_date || ""}" />
+
+      <label class="f-label">返済価格（円）</label>
+      <input id="ef-exit-price" type="number" step="0.1" inputmode="decimal" class="f-input" value="${t.exit_price ?? ""}" />
+
+      <label class="f-label">手数料＋金利の合計（円）</label>
+      <input id="ef-fee" type="number" step="1" inputmode="numeric" class="f-input" value="${t.fee ?? 0}" />
+    `
+    : "";
+
+  wrap.innerHTML = `
+    <div class="card">
+      <h3>記録を編集</h3>
+      <label class="f-label">銘柄コード</label>
+      <input id="ef-code" list="ef-code-list" class="f-input" value="${t.code}" />
+      <datalist id="ef-code-list">${options}</datalist>
+
+      <label class="f-label">取引種別</label>
+      <select id="ef-type" class="f-input">
+        <option value="margin_long" ${t.position_type === "margin_long" ? "selected" : ""}>信用買い</option>
+        <option value="cash_long" ${t.position_type === "cash_long" ? "selected" : ""}>現物買い</option>
+        <option value="margin_short" ${t.position_type === "margin_short" ? "selected" : ""}>信用売り</option>
+      </select>
+
+      <label class="f-label">建玉日</label>
+      <input id="ef-date" type="date" class="f-input" value="${t.entry_date}" />
+
+      <label class="f-label">約定価格（円）</label>
+      <input id="ef-price" type="number" step="0.1" inputmode="decimal" class="f-input" value="${t.entry_price}" />
+
+      <label class="f-label">株数</label>
+      <input id="ef-qty" type="number" step="1" inputmode="numeric" class="f-input" value="${t.quantity}" />
+
+      <label class="f-label">きっかけのアラートレベル（任意）</label>
+      <input id="ef-level" type="number" step="0.1" inputmode="decimal" class="f-input" value="${t.alert_level ?? ""}" />
+
+      <label class="f-label">メモ（任意）</label>
+      <input id="ef-memo" type="text" class="f-input" value="${(t.memo || "").replace(/"/g, "&quot;")}" />
+
+      ${exitFieldsHtml}
+
+      <div style="display:flex;gap:8px;margin-top:12px;">
+        <button id="ef-save" class="btn-primary" style="flex:1;">保存</button>
+        <button id="ef-cancel" class="toggle" style="flex:1;">やめる</button>
+      </div>
+    </div>`;
+
+  document.getElementById("ef-cancel").addEventListener("click", () => (wrap.innerHTML = ""));
+  document.getElementById("ef-save").addEventListener("click", () => saveEdit(t));
+  wrap.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+async function saveEdit(original) {
+  const code = document.getElementById("ef-code").value.trim();
+  const price = parseFloat(document.getElementById("ef-price").value);
+  const qty = parseInt(document.getElementById("ef-qty").value, 10);
+  const levelRaw = document.getElementById("ef-level").value;
+
+  if (!code || !(price > 0) || !(qty > 0)) {
+    alert("銘柄コード・約定価格・株数は必須です");
+    return;
+  }
+
+  const updates = {
+    code,
+    name: catalogName(code) || original.name,
+    position_type: document.getElementById("ef-type").value,
+    alert_level: levelRaw === "" ? null : parseFloat(levelRaw),
+    entry_date: document.getElementById("ef-date").value,
+    entry_price: price,
+    quantity: qty,
+    memo: document.getElementById("ef-memo").value || null,
+  };
+
+  if (original.is_closed) {
+    const exitPrice = parseFloat(document.getElementById("ef-exit-price").value);
+    if (!(exitPrice > 0)) {
+      alert("返済価格を入力してください");
+      return;
+    }
+    updates.exit_date = document.getElementById("ef-exit-date").value;
+    updates.exit_price = exitPrice;
+    updates.fee = parseInt(document.getElementById("ef-fee").value || "0", 10);
+  }
+
+  const btn = document.getElementById("ef-save");
+  btn.disabled = true;
+  btn.textContent = "保存中…";
+
+  const { error } = await tsb.from("trade_record").update(updates).eq("id", original.id);
+
+  if (error) {
+    alert("保存に失敗しました: " + error.message);
+    btn.disabled = false;
+    btn.textContent = "保存";
+    return;
+  }
+  document.getElementById("trade-form-wrap").innerHTML = "";
+  await loadTrades();
 }
 
 async function deleteTrade(id) {
