@@ -11,25 +11,6 @@ const POSITION_LABELS = {
   margin_short: "信用売り",
 };
 
-// ---------- 合言葉の管理 ----------
-function getSecret() {
-  return localStorage.getItem("tradeSecret") || "";
-}
-
-async function ensureSecret() {
-  let s = getSecret();
-  if (s) return s;
-  s = prompt("書き込み用の合言葉を入力してください\n(Supabaseに設定したものです)");
-  if (!s) return null;
-  const { data, error } = await tsb.rpc("check_secret", { p_secret: s });
-  if (error || data !== true) {
-    alert("合言葉が違います");
-    return null;
-  }
-  localStorage.setItem("tradeSecret", s);
-  return s;
-}
-
 // ---------- ユーティリティ ----------
 function todayStr() {
   const d = new Date();
@@ -238,13 +219,11 @@ function showTradeForm(prefill = {}) {
 }
 
 async function saveTrade() {
-  const secret = await ensureSecret();
-  if (!secret) return;
-
   const code = document.getElementById("tf-code").value.trim();
   const price = parseFloat(document.getElementById("tf-price").value);
   const qty = parseInt(document.getElementById("tf-qty").value, 10);
   const levelRaw = document.getElementById("tf-level").value;
+  const memo = document.getElementById("tf-memo").value.trim();
 
   if (!code || !(price > 0) || !(qty > 0)) {
     alert("銘柄コード・約定価格・株数は必須です");
@@ -255,22 +234,19 @@ async function saveTrade() {
   btn.disabled = true;
   btn.textContent = "保存中…";
 
-  const { error } = await tsb.rpc("add_trade", {
-    p_secret: secret,
-    p_code: code,
-    p_name: catalogName(code) || null,
-    p_position_type: document.getElementById("tf-type").value,
-    p_alert_level: levelRaw === "" ? null : parseFloat(levelRaw),
-    p_alert_change_pct: null,
-    p_entry_date: document.getElementById("tf-date").value,
-    p_entry_price: price,
-    p_quantity: qty,
-    p_memo: document.getElementById("tf-memo").value,
+  const { error } = await tsb.from("trade_record").insert({
+    code,
+    name: catalogName(code) || null,
+    position_type: document.getElementById("tf-type").value,
+    alert_level: levelRaw === "" ? null : parseFloat(levelRaw),
+    entry_date: document.getElementById("tf-date").value,
+    entry_price: price,
+    quantity: qty,
+    memo: memo || null,
   });
 
   if (error) {
     alert("保存に失敗しました: " + error.message);
-    if (/合言葉/.test(error.message)) localStorage.removeItem("tradeSecret");
     btn.disabled = false;
     btn.textContent = "保存";
     return;
@@ -298,20 +274,19 @@ function showCloseForm(id) {
     </div>`;
   document.getElementById("cf-cancel").addEventListener("click", () => (wrap.innerHTML = ""));
   document.getElementById("cf-save").addEventListener("click", async () => {
-    const secret = await ensureSecret();
-    if (!secret) return;
     const price = parseFloat(document.getElementById("cf-price").value);
     if (!(price > 0)) {
       alert("約定価格を入力してください");
       return;
     }
-    const { error } = await tsb.rpc("close_trade", {
-      p_secret: secret,
-      p_id: id,
-      p_exit_date: document.getElementById("cf-date").value,
-      p_exit_price: price,
-      p_fee: parseInt(document.getElementById("cf-fee").value || "0", 10),
-    });
+    const { error } = await tsb
+      .from("trade_record")
+      .update({
+        exit_date: document.getElementById("cf-date").value,
+        exit_price: price,
+        fee: parseInt(document.getElementById("cf-fee").value || "0", 10),
+      })
+      .eq("id", id);
     if (error) {
       alert("保存に失敗しました: " + error.message);
       return;
@@ -324,9 +299,7 @@ function showCloseForm(id) {
 
 async function deleteTrade(id) {
   if (!confirm("この記録を削除しますか？")) return;
-  const secret = await ensureSecret();
-  if (!secret) return;
-  const { error } = await tsb.rpc("delete_trade", { p_secret: secret, p_id: id });
+  const { error } = await tsb.from("trade_record").delete().eq("id", id);
   if (error) {
     alert("削除に失敗しました: " + error.message);
     return;
