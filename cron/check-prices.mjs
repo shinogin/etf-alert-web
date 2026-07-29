@@ -205,17 +205,17 @@ async function main() {
       const plan = (state.purchase_plan_item || []).find((p) => p.level === reached);
       const planText = plan ? `。計画: ${plan.amount.toLocaleString()}円` : "";
 
-      // リバウンド統計(過去10年バックテスト: 1306/1321/2558/1475平均、レベル到達後10営業日)
-      // 出典: 2026-07 実施のバックテスト(分割調整済み・分配金除く)
-      const REBOUND_STATS = {
-        "-2": { win: 73, avg: "+1.5" },
-        "-3": { win: 61, avg: "+0.5" },
-        "-5": { win: 59, avg: "+1.5" },
-        "-7": { win: 100, avg: "+12", note: "※過去7回のみ" },
-      };
-      const st = REBOUND_STATS[String(reached)];
+      // リバウンド統計(過去10年バックテスト、流動性フィルター後、分割等の異常値除外)
+      // 出典: 2026-07 実施のバックテスト。カテゴリ(指数/テーマ)×通知レベル×経過営業日ごとの
+      // 勝率(win,%)・平均リターン(avg,%)・中央値リターン(med,%)・サンプル数(n)。
+      // 詳細(複数日数の一覧)はETF詳細画面で確認できるため、通知本文には代表的に10営業日のみ表示する。
+      const REBOUND_MATRIX = {"index":{"-3":{"10":{"n":1472,"win":65.5,"avg":1.5,"med":2.3},"15":{"n":1467,"win":65.6,"avg":2.1,"med":2.7},"20":{"n":1454,"win":70.1,"avg":3.7,"med":3.3},"30":{"n":1436,"win":74.0,"avg":4.9,"med":5.3},"63":{"n":1411,"win":79.9,"avg":9.5,"med":9.5}},"-5":{"10":{"n":326,"win":70.6,"avg":3.5,"med":4.8},"15":{"n":325,"win":69.8,"avg":5.0,"med":6.0},"20":{"n":324,"win":77.2,"avg":6.9,"med":7.9},"30":{"n":321,"win":76.3,"avg":7.4,"med":8.2},"63":{"n":319,"win":88.7,"avg":14.5,"med":16.1}},"-8":{"10":{"n":72,"win":81.9,"avg":7.3,"med":7.7},"15":{"n":72,"win":81.9,"avg":10.0,"med":11.9},"20":{"n":72,"win":84.7,"avg":12.0,"med":15.4},"30":{"n":72,"win":86.1,"avg":11.1,"med":14.3},"63":{"n":72,"win":87.5,"avg":18.5,"med":24.2}}},"theme":{"-3":{"10":{"n":4939,"win":59.9,"avg":1.1,"med":1.6},"15":{"n":4907,"win":59.7,"avg":1.5,"med":1.7},"20":{"n":4882,"win":60.6,"avg":2.3,"med":2.3},"30":{"n":4825,"win":61.1,"avg":2.6,"med":2.7},"63":{"n":4657,"win":66.3,"avg":6.8,"med":5.4}},"-7":{"10":{"n":600,"win":63.0,"avg":2.2,"med":3.8},"15":{"n":593,"win":65.4,"avg":3.6,"med":5.7},"20":{"n":590,"win":65.9,"avg":4.5,"med":5.9},"30":{"n":583,"win":64.8,"avg":3.5,"med":6.3},"63":{"n":575,"win":65.2,"avg":8.2,"med":8.3}},"-10":{"10":{"n":242,"win":69.0,"avg":4.3,"med":6.9},"15":{"n":241,"win":68.5,"avg":5.8,"med":11.4},"20":{"n":241,"win":68.9,"avg":6.9,"med":11.3},"30":{"n":240,"win":68.3,"avg":5.4,"med":10.4},"63":{"n":240,"win":68.3,"avg":10.9,"med":11.2}}}};
+
+      const catLevels = categoryDefaultLevels(state.etf_catalog);
+      const rebGroup = catLevels == null ? null : catLevels === THEME_DEFAULT_LEVELS ? "theme" : "index";
+      const st = rebGroup ? REBOUND_MATRIX[rebGroup]?.[String(reached)]?.["10"] : null;
       const statText = st
-        ? `\n参考: 過去10年、このレベル後10営業日の勝率${st.win}%・平均${st.avg}%${st.note || ""}`
+        ? `\n参考: 過去10年、このレベル後10営業日の勝率${st.win}%・平均${st.avg}%・中央値${st.med}%(詳細はアプリで確認)`
         : "";
 
       const payload = JSON.stringify({
