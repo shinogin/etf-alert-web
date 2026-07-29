@@ -48,23 +48,52 @@ function categoryDefaultLevels(entry) {
   return isBroadIndex ? INDEX_DEFAULT_LEVELS : THEME_DEFAULT_LEVELS;
 }
 
-// ---------- カタログ ----------
-// 流動性フィルターの既定閾値。どちらか一方でも下回れば「流動性が低い」とみなし、
-// 「流動性の低い銘柄も表示」がOFFの間はカタログから除外する。
-// - AUM(純資産総額): 10億円未満
-// - 売買代金(直近営業日、出来高×価格の概算): 1,000万円未満
-//   ※ turnoverは価格帯によらず実際の売買のしやすさを反映するためAUMより優先度が高い。
-//     ただしbulk-crash-scanの実行前などデータ未取得の銘柄はAUM基準のみで判定する。
-const LIQUIDITY_AUM_MIN = 1_000_000_000;
-const LIQUIDITY_TURNOVER_MIN = 10_000_000;
+// 過去10年バックテスト(流動性フィルター後、分割等の異常値除外)による
+// カテゴリ×通知レベル×経過営業日ごとの勝率(win,%)・平均リターン(avg,%)・中央値リターン(med,%)・サンプル数(n)。
+// cron/check-prices.mjsのREBOUND_MATRIXと同一データ(出典: 2026-07実施のバックテスト)。
+const REBOUND_MATRIX = {"index":{"-3":{"10":{"n":1472,"win":65.5,"avg":1.5,"med":2.3},"15":{"n":1467,"win":65.6,"avg":2.1,"med":2.7},"20":{"n":1454,"win":70.1,"avg":3.7,"med":3.3},"30":{"n":1436,"win":74.0,"avg":4.9,"med":5.3},"63":{"n":1411,"win":79.9,"avg":9.5,"med":9.5}},"-5":{"10":{"n":326,"win":70.6,"avg":3.5,"med":4.8},"15":{"n":325,"win":69.8,"avg":5.0,"med":6.0},"20":{"n":324,"win":77.2,"avg":6.9,"med":7.9},"30":{"n":321,"win":76.3,"avg":7.4,"med":8.2},"63":{"n":319,"win":88.7,"avg":14.5,"med":16.1}},"-8":{"10":{"n":72,"win":81.9,"avg":7.3,"med":7.7},"15":{"n":72,"win":81.9,"avg":10.0,"med":11.9},"20":{"n":72,"win":84.7,"avg":12.0,"med":15.4},"30":{"n":72,"win":86.1,"avg":11.1,"med":14.3},"63":{"n":72,"win":87.5,"avg":18.5,"med":24.2}}},"theme":{"-3":{"10":{"n":4939,"win":59.9,"avg":1.1,"med":1.6},"15":{"n":4907,"win":59.7,"avg":1.5,"med":1.7},"20":{"n":4882,"win":60.6,"avg":2.3,"med":2.3},"30":{"n":4825,"win":61.1,"avg":2.6,"med":2.7},"63":{"n":4657,"win":66.3,"avg":6.8,"med":5.4}},"-7":{"10":{"n":600,"win":63.0,"avg":2.2,"med":3.8},"15":{"n":593,"win":65.4,"avg":3.6,"med":5.7},"20":{"n":590,"win":65.9,"avg":4.5,"med":5.9},"30":{"n":583,"win":64.8,"avg":3.5,"med":6.3},"63":{"n":575,"win":65.2,"avg":8.2,"med":8.3}},"-10":{"10":{"n":242,"win":69.0,"avg":4.3,"med":6.9},"15":{"n":241,"win":68.5,"avg":5.8,"med":11.4},"20":{"n":241,"win":68.9,"avg":6.9,"med":11.3},"30":{"n":240,"win":68.3,"avg":5.4,"med":10.4},"63":{"n":240,"win":68.3,"avg":10.9,"med":11.2}}}};
+const REBOUND_HORIZON_LABELS = { "10": "10営業日", "15": "15営業日", "20": "20営業日", "30": "30営業日", "63": "63営業日(約3ヶ月)" };
 
-function isIlliquid(entry) {
-  const aum = entry.aum ?? 0;
-  if (aum < LIQUIDITY_AUM_MIN) return true;
-  const turnover = userStatesByCode[entry.code]?.last_turnover;
-  if (turnover != null && turnover < LIQUIDITY_TURNOVER_MIN) return true;
-  return false;
+function renderReboundStatsTable(entry) {
+  const levels = categoryDefaultLevels(entry);
+  if (!levels) return ""; // レバレッジ/インバースはバックテスト対象外
+  const group = levels === THEME_DEFAULT_LEVELS ? "theme" : "index";
+  const groupLabel = group === "theme" ? "テーマ系" : "指数系";
+  const rows = levels
+    .slice()
+    .sort((a, b) => a - b)
+    .map((level) => {
+      const byHorizon = REBOUND_MATRIX[group]?.[String(level)];
+      if (!byHorizon) return "";
+      const cells = Object.keys(REBOUND_HORIZON_LABELS)
+        .map((d) => {
+          const st = byHorizon[d];
+          if (!st) return `<td style="padding:3px 6px;">—</td>`;
+          return `<td style="padding:3px 6px; white-space:nowrap;">勝率${st.win}%<br>平均${st.avg}%/中央値${st.med}%</td>`;
+        })
+        .join("");
+      return `<tr><td style="padding:3px 6px; font-weight:bold;">${level}%</td>${cells}</tr>`;
+    })
+    .join("");
+  const headerCells = Object.values(REBOUND_HORIZON_LABELS)
+    .map((label) => `<th style="padding:3px 6px; font-weight:normal; opacity:0.7;">${label}</th>`)
+    .join("");
+  return `
+    <div class="detail-section">
+      <h3>参考: 過去10年バックテスト(${groupLabel})</h3>
+      <div style="font-size:11px; opacity:0.7; margin-bottom:6px;">流動性フィルター後・分割等の異常値除外。到達日終値を基準にN営業日後の変化率を集計。投資助言ではありません。</div>
+      <div style="overflow-x:auto;">
+        <table style="font-size:11px; border-collapse:collapse; min-width:100%;">
+          <thead><tr><th style="padding:3px 6px;"></th>${headerCells}</tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
 }
+
+// ---------- カタログ ----------
+// 流動性スクリーニング(AUM下限・売買代金下限)はUI上のスライダー(filter-aum-min /
+// filter-turnover-min)で可変。詳細はapplyCatalogView()を参照。
 
 let catalogCache = [];
 let userStatesCache = [];
@@ -245,7 +274,13 @@ function applyCatalogView() {
     expenseMax == null ? "上限なし" : expenseMax.toFixed(2) + "%以下";
   const onlyLev = document.getElementById("filter-leveraged").checked;
   const onlyInv = document.getElementById("filter-inverse").checked;
-  const showIlliquid = document.getElementById("filter-show-illiquid").checked;
+  const aumMinOku = parseInt(document.getElementById("filter-aum-min").value, 10);
+  const aumMin = aumMinOku * 100_000_000; // 億円 -> 円
+  document.getElementById("aum-min-label").textContent = aumMinOku === 0 ? "指定なし" : `${aumMinOku}億円`;
+  const turnoverMinMan = parseInt(document.getElementById("filter-turnover-min").value, 10);
+  const turnoverMin = turnoverMinMan * 10_000; // 万円 -> 円
+  document.getElementById("turnover-min-label").textContent =
+    turnoverMinMan === 0 ? "指定なし" : `${turnoverMinMan.toLocaleString()}万円`;
   const sortKey = document.getElementById("sort-select").value;
 
   let list = catalogCache.filter((en) => {
@@ -265,7 +300,12 @@ function applyCatalogView() {
     }
     if (onlyLev && !en.is_leveraged) return false;
     if (onlyInv && !en.is_inverse) return false;
-    if (!showIlliquid && isIlliquid(en)) return false;
+    if (aumMin > 0 && (en.aum ?? 0) < aumMin) return false;
+    if (turnoverMin > 0) {
+      const turnover = userStatesByCode[en.code]?.last_turnover;
+      // 売買代金データが未取得の銘柄はAUM側の基準のみで判定(過剰除外を避ける)
+      if (turnover != null && turnover < turnoverMin) return false;
+    }
     return true;
   });
 
@@ -353,6 +393,8 @@ async function showDetail(code) {
         <div style="font-size:11px; opacity:0.7; margin-top:4px;">空の場合は既定値(${(categoryDefaultLevels(entry) || [-3, -5, -7, -10]).join(', ')}%)を使用</div>
       </div>
     </div>
+
+    ${renderReboundStatsTable(entry)}
 
     <div class="detail-section">
       <h3>買付計画</h3>
@@ -553,10 +595,10 @@ async function updateUserState(code, updates) {
 
 // loadAndRenderPlans は showDetail 内に統合済み
 
-["search-box", "filter-expense-max"].forEach((id) => {
+["search-box", "filter-expense-max", "filter-aum-min", "filter-turnover-min"].forEach((id) => {
   document.getElementById(id).addEventListener("input", applyCatalogView);
 });
-["filter-category", "filter-theme", "filter-leveraged", "filter-inverse", "filter-show-illiquid", "sort-select"].forEach((id) => {
+["filter-category", "filter-theme", "filter-leveraged", "filter-inverse", "sort-select"].forEach((id) => {
   document.getElementById(id).addEventListener("change", applyCatalogView);
 });
 
