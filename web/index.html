@@ -53,21 +53,6 @@
   .timeline-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #8884; font-size: 12px; }
   .timeline-date { font-weight: 600; }
   .timeline-price { opacity: 0.8; }
-  /* --- 売買記録 --- */
-  .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-  .stat-cell { background: #8881; border-radius: 8px; padding: 8px 6px; text-align: center; }
-  .stat-label { font-size: 10px; opacity: 0.65; }
-  .stat-value { font-size: 15px; font-weight: 700; margin-top: 2px; }
-  .pnl-plus { color: #2a8a4a; }
-  .pnl-minus { color: #d33; }
-  .trade-card { padding: 10px 12px; }
-  .trade-head { display: flex; justify-content: space-between; align-items: baseline; }
-  .trade-head .name { font-weight: 600; font-size: 14px; }
-  .trade-head .code { font-size: 12px; opacity: 0.6; }
-  .trade-line { font-size: 13px; margin-top: 4px; }
-  .f-label { display: block; font-size: 12px; opacity: 0.7; margin: 10px 0 3px; }
-  .f-input { width: 100%; padding: 9px; border: 1px solid #8886; border-radius: 6px;
-             background: Canvas; color: inherit; font-size: 16px; box-sizing: border-box; }
 </style>
 </head>
 <body>
@@ -78,7 +63,6 @@
     <button data-tab="catalog">カタログ</button>
     <button data-tab="detail" style="display:none;">詳細</button>
     <button data-tab="history">通知履歴</button>
-    <button data-tab="trades">売買記録</button>
     <button data-tab="settings">設定</button>
   </nav>
 </header>
@@ -114,7 +98,16 @@
     </label>
     <label class="filter-check"><input type="checkbox" id="filter-leveraged" /> レバレッジ</label>
     <label class="filter-check"><input type="checkbox" id="filter-inverse" /> インバース</label>
-    <label class="filter-check"><input type="checkbox" id="filter-show-illiquid" /> 流動性の低い銘柄も表示</label>
+    <label class="filter-slider">
+      純資産総額(AUM) 下限
+      <span id="aum-min-label">10億円</span>
+      <input type="range" id="filter-aum-min" min="0" max="100" step="1" value="10" />
+    </label>
+    <label class="filter-slider">
+      売買代金(1日あたり目安) 下限
+      <span id="turnover-min-label">1,000万円</span>
+      <input type="range" id="filter-turnover-min" min="0" max="3000" step="100" value="1000" />
+    </label>
     <select id="sort-select">
       <option value="name">名称順</option>
       <option value="code">コード順</option>
@@ -128,10 +121,6 @@
 
 <section id="history">
   <div id="history-list" class="empty">通知履歴はまだありません</div>
-</section>
-
-<section id="trades">
-  <div id="trades-body" class="empty">読み込み中…</div>
 </section>
 
 <section id="detail">
@@ -178,6 +167,5 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="js/config.js"></script>
 <script src="js/app.js"></script>
-<script src="js/trades.js"></script>
 </body>
 </html>
