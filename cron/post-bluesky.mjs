@@ -113,7 +113,10 @@ async function main() {
 
   const header = `📉 ${dateStr} 下落ETF (前日比${ALERT_THRESHOLD}%以下)\n\n`;
   const link = `${SITE_URL}/etf/`;
-  const footer = `\n詳細・過去統計はこちら\n${link}`;
+  // ハッシュタグを付けて検索・フィード経由で発見されるようにする。
+  const HASHTAGS = ["ETF", "投資", "日経平均"];
+  const tagLine = HASHTAGS.map((t) => `#${t}`).join(" ");
+  const footer = `\n詳細・過去統計はこちら\n${link}\n\n${tagLine}`;
 
   let body = "";
   let usedCount = 0;
@@ -133,7 +136,8 @@ async function main() {
 
   let text = header + body + footer;
 
-  // linkのバイトオフセットを計算してfacetを作る(クリック可能なリンクにするため)
+  // Blueskyではリンクもハッシュタグもfacetで範囲指定しないと機能しない。
+  // 範囲はバイトオフセットで指定する必要がある点に注意。
   const linkStart = byteLength(text.slice(0, text.lastIndexOf(link)));
   const linkEnd = linkStart + byteLength(link);
   const facets = [
@@ -142,6 +146,17 @@ async function main() {
       features: [{ $type: "app.bsky.richtext.facet#link", uri: link }],
     },
   ];
+
+  for (const tag of HASHTAGS) {
+    const shown = `#${tag}`;
+    const at = text.lastIndexOf(shown);
+    if (at === -1) continue;
+    const start = byteLength(text.slice(0, at));
+    facets.push({
+      index: { byteStart: start, byteEnd: start + byteLength(shown) },
+      features: [{ $type: "app.bsky.richtext.facet#tag", tag }],
+    });
+  }
 
   const session = await bskyLogin();
   const result = await bskyPost(session, text, facets);
