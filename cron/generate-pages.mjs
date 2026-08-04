@@ -23,7 +23,7 @@ const SITE_URL = "https://shinogin.github.io/etf-alert-web";
 // (A8.netで提携承認が下りるまでは全て空 = 広告は一切表示されない状態)
 function loadActiveBrokers() {
   try {
-    const raw = JSON.parse(readFileSync("./affiliate-links.json", "utf-8"));
+    const raw = JSON.parse(readFileSync(`${OUT_ROOT}/affiliate-links.json`, "utf-8"));
     return (raw.brokers || []).filter((b) => b.url && b.url.trim() !== "");
   } catch (e) {
     console.warn("affiliate-links.json の読み込みに失敗(広告なしで続行):", e.message);
