@@ -67,15 +67,75 @@ function todayJST() {
   return new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
 }
 
-// このアプリの通知ロジック(Blueprint §5.1)が使う既定レベル。
-// 個別ページの「参考統計」表示に使う簡易バックテスト値。
-// 実データが蓄積したら trade_stats を優先表示する。
-const GENERIC_REBOUND_STATS = {
-  "-2": { win: 73, avg: 1.5 },
-  "-3": { win: 61, avg: 0.5 },
-  "-5": { win: 59, avg: 1.5 },
-  "-7": { win: 100, avg: 12, note: "※過去7回のみ・参考値" },
-};
+// 過去10年バックテスト(流動性フィルター後、分割等の異常値除外)による
+// カテゴリ×通知レベル×経過営業日ごとの勝率(win,%)・平均リターン(avg,%)・中央値リターン(med,%)・サンプル数(n)。
+// web/js/app.js および cron/check-prices.mjs と同一データ(出典: 2026-07実施のバックテスト)。
+const REBOUND_MATRIX = {"index": {"-3": {"10": {"n": 1472, "win": 65.5, "avg": 1.5, "med": 2.3}, "15": {"n": 1467, "win": 65.6, "avg": 2.1, "med": 2.7}, "20": {"n": 1454, "win": 70.1, "avg": 3.7, "med": 3.3}, "30": {"n": 1436, "win": 74.0, "avg": 4.9, "med": 5.3}, "63": {"n": 1411, "win": 79.9, "avg": 9.5, "med": 9.5}}, "-5": {"10": {"n": 326, "win": 70.6, "avg": 3.5, "med": 4.8}, "15": {"n": 325, "win": 69.8, "avg": 5.0, "med": 6.0}, "20": {"n": 324, "win": 77.2, "avg": 6.9, "med": 7.9}, "30": {"n": 321, "win": 76.3, "avg": 7.4, "med": 8.2}, "63": {"n": 319, "win": 88.7, "avg": 14.5, "med": 16.1}}, "-8": {"10": {"n": 72, "win": 81.9, "avg": 7.3, "med": 7.7}, "15": {"n": 72, "win": 81.9, "avg": 10.0, "med": 11.9}, "20": {"n": 72, "win": 84.7, "avg": 12.0, "med": 15.4}, "30": {"n": 72, "win": 86.1, "avg": 11.1, "med": 14.3}, "63": {"n": 72, "win": 87.5, "avg": 18.5, "med": 24.2}}}, "theme": {"-3": {"10": {"n": 4939, "win": 59.9, "avg": 1.1, "med": 1.6}, "15": {"n": 4907, "win": 59.7, "avg": 1.5, "med": 1.7}, "20": {"n": 4882, "win": 60.6, "avg": 2.3, "med": 2.3}, "30": {"n": 4825, "win": 61.1, "avg": 2.6, "med": 2.7}, "63": {"n": 4657, "win": 66.3, "avg": 6.8, "med": 5.4}}, "-7": {"10": {"n": 600, "win": 63.0, "avg": 2.2, "med": 3.8}, "15": {"n": 593, "win": 65.4, "avg": 3.6, "med": 5.7}, "20": {"n": 590, "win": 65.9, "avg": 4.5, "med": 5.9}, "30": {"n": 583, "win": 64.8, "avg": 3.5, "med": 6.3}, "63": {"n": 575, "win": 65.2, "avg": 8.2, "med": 8.3}}, "-10": {"10": {"n": 242, "win": 69.0, "avg": 4.3, "med": 6.9}, "15": {"n": 241, "win": 68.5, "avg": 5.8, "med": 11.4}, "20": {"n": 241, "win": 68.9, "avg": 6.9, "med": 11.3}, "30": {"n": 240, "win": 68.3, "avg": 5.4, "med": 10.4}, "63": {"n": 240, "win": 68.3, "avg": 10.9, "med": 11.2}}}};
+const REBOUND_HORIZON_LABELS = { "10": "10営業日", "15": "15営業日", "20": "20営業日", "30": "30営業日", "63": "63営業日(約3ヶ月)" };
+
+// 広範な指数に連動するETFは値動きが穏やかなため浅めの閾値、
+// テーマ・セクター型は振れ幅が大きいため深めの閾値を既定とする。
+const INDEX_DEFAULT_LEVELS = [-3, -5, -8];
+const THEME_DEFAULT_LEVELS = [-3, -7, -10];
+const BROAD_INDEX_KEYWORDS = [
+  "TOPIX", "日経225", "日経平均", "日経３００", "日経300",
+  "JPX日経400", "JPX 日経 400", "JPXプライム150", "JPX日経インデックス400",
+  "S&P500", "S&P 500", "NYダウ", "ダウ工業", "ナスダック100", "NASDAQ100", "NASDAQ-100",
+  "MSCI ACWI", "MSCI-KOKUSAI", "MSCIコクサイ", "MSCI コクサイ",
+  "FTSE 100", "DAX", "CSI300", "MSCIエマージング", "MSCI エマージング",
+];
+
+function categoryDefaultLevels(entry) {
+  // レバレッジ・インバース型は値動きの性質が異なるためバックテスト対象外
+  if (!entry || entry.is_leveraged || entry.is_inverse) return null;
+  const idx = entry.index_name || "";
+  const isBroadIndex = BROAD_INDEX_KEYWORDS.some((kw) => idx.includes(kw));
+  return isBroadIndex ? INDEX_DEFAULT_LEVELS : THEME_DEFAULT_LEVELS;
+}
+
+// 銘柄ごとのリバウンド統計表を生成する。
+// 対象外(レバレッジ/インバース)の場合は空文字を返し、セクションごと非表示にする。
+function reboundStatsSection(entry) {
+  const levels = categoryDefaultLevels(entry);
+  if (!levels) {
+    return `<h2>下落後リバウンド統計</h2>
+<p style="font-size:13px;">レバレッジ型・インバース型は値動きの性質が通常のETFと大きく異なるため、統計の対象外としています。</p>`;
+  }
+  const group = levels === THEME_DEFAULT_LEVELS ? "theme" : "index";
+  const groupLabel = group === "theme" ? "テーマ・セクター型" : "主要指数連動型";
+
+  const headerCells = Object.values(REBOUND_HORIZON_LABELS)
+    .map((label) => `<th>${label}</th>`)
+    .join("");
+
+  const rows = levels
+    .slice()
+    .sort((a, b) => a - b)
+    .map((level) => {
+      const byHorizon = REBOUND_MATRIX[group]?.[String(level)];
+      if (!byHorizon) return "";
+      const cells = Object.keys(REBOUND_HORIZON_LABELS)
+        .map((d) => {
+          const st = byHorizon[d];
+          if (!st) return `<td>—</td>`;
+          return `<td style="white-space:nowrap;">勝率 ${st.win}%<br/><small>平均 ${st.avg}% / 中央値 ${st.med}%</small></td>`;
+        })
+        .join("");
+      const n = byHorizon["63"]?.n ?? byHorizon["10"]?.n;
+      return `<tr><th style="width:auto;">${level}%到達<br/><small>n=${n}</small></th>${cells}</tr>`;
+    })
+    .join("");
+
+  return `<h2>下落後リバウンド統計</h2>
+<p style="font-size:13px;">この銘柄は<strong>${esc(groupLabel)}</strong>に分類されます。過去10年の東証上場ETFを対象に、前日比が各水準まで下落した日を起点として、その後の値動きを集計した結果です。「勝率」は起点の価格を上回った割合を指します。</p>
+<div style="overflow-x:auto;">
+<table>
+  <tr><th style="width:auto;">下落水準</th>${headerCells}</tr>
+  ${rows}
+</table>
+</div>
+<p style="font-size:12px;opacity:0.6;">n=サンプル数。分割等による異常値を除外し、流動性の低い銘柄を除いた上で集計しています。同一分類の銘柄群を対象とした統計であり、この銘柄個別の実績ではありません。過去の傾向は将来の成果を保証しません。</p>`;
+}
 
 function pageLayout({ title, description, canonical, bodyHtml }) {
   return `<!DOCTYPE html>
@@ -176,15 +236,6 @@ async function main() {
       .map((t) => `<span class="chip">${esc(t)}</span>`)
       .join("");
 
-    const reboundRows = Object.entries(GENERIC_REBOUND_STATS)
-      .map(
-        ([lvl, v]) =>
-          `<tr><td>${lvl}%到達</td><td>勝率${v.win}%・平均${v.avg > 0 ? "+" : ""}${v.avg}%${
-            v.note ? `<br/><small>${esc(v.note)}</small>` : ""
-          }</td></tr>`
-      )
-      .join("");
-
     const title = `${e.name}（${e.code}）下落統計・信託報酬・純資産｜ETF下落統計データベース`;
     const description = `${e.name}(${e.code})の信託報酬${e.expense_ratio}%・純資産${aumText(
       e.aum
@@ -211,9 +262,7 @@ async function main() {
   <tr><th>更新時刻</th><td>${s.last_updated_at ? new Date(s.last_updated_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" }) : "—"}</td></tr>
 </table>
 
-<h2>下落後リバウンド統計（参考値）</h2>
-<table>${reboundRows}</table>
-<p style="font-size:12px;opacity:0.6;">大型・主要指数連動ETFの過去傾向に基づく参考値です。個別銘柄・時期により結果は大きく異なります。投資助言ではありません。</p>
+${reboundStatsSection(e)}
 
 <a class="cta" href="${SITE_URL}/?code=${esc(e.code)}">アプリでこの銘柄を監視・通知登録する</a>
 
