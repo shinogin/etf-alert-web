@@ -114,16 +114,7 @@
     </label>
     <label class="filter-check"><input type="checkbox" id="filter-leveraged" /> レバレッジ</label>
     <label class="filter-check"><input type="checkbox" id="filter-inverse" /> インバース</label>
-    <label class="filter-slider">
-      純資産総額(AUM) 下限
-      <span id="aum-min-label">10億円</span>
-      <input type="range" id="filter-aum-min" min="0" max="100" step="1" value="10" />
-    </label>
-    <label class="filter-slider">
-      売買代金(1日あたり目安) 下限
-      <span id="turnover-min-label">1,000万円</span>
-      <input type="range" id="filter-turnover-min" min="0" max="3000" step="100" value="1000" />
-    </label>
+    <label class="filter-check"><input type="checkbox" id="filter-show-illiquid" /> 流動性の低い銘柄も表示</label>
     <select id="sort-select">
       <option value="name">名称順</option>
       <option value="code">コード順</option>
@@ -188,5 +179,6 @@
 <script src="js/config.js"></script>
 <script src="js/app.js"></script>
 <script src="js/trades.js"></script>
+<script src="js/affiliate.js"></script>
 </body>
 </html>
