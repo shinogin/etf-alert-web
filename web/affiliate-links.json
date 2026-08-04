@@ -1,0 +1,10 @@
+{
+  "_readme": "A8.netで提携承認が下りたら、対応する行のurlを実際のアフィリエイトリンクに書き換えてください。urlが空のものはサイトに表示されません。",
+  "brokers": [
+    { "name": "SBI証券",       "url": "", "note": "業界最大手" },
+    { "name": "松井証券",      "url": "https://www.matsui.co.jp/event/multi-ta/?modal=show&utm_source=a8&utm_campaign=stock&utm_medium=affiliate&argument=0p7Lzdhu&dmai=a67611ad9bab23", "note": "投資系サイトとの提携に積極的" },
+    { "name": "moomoo証券",    "url": "", "note": "信用取引ユーザーとの親和性が高い" },
+    { "name": "楽天証券",      "url": "", "note": "" },
+    { "name": "マネックス証券", "url": "", "note": "" }
+  ]
+}
