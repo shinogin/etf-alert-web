@@ -112,6 +112,16 @@
       <span id="expense-max-label">上限なし</span>
       <input type="range" id="filter-expense-max" min="0" max="250" step="1" value="250" />
     </label>
+    <label class="filter-slider">
+      純資産下限
+      <span id="aum-min-label">指定なし</span>
+      <input type="range" id="filter-aum-min" min="0" max="1000" step="10" value="0" />
+    </label>
+    <label class="filter-slider">
+      売買代金下限
+      <span id="turnover-min-label">指定なし</span>
+      <input type="range" id="filter-turnover-min" min="0" max="10000" step="100" value="0" />
+    </label>
     <label class="filter-check"><input type="checkbox" id="filter-leveraged" /> レバレッジ</label>
     <label class="filter-check"><input type="checkbox" id="filter-inverse" /> インバース</label>
     <label class="filter-check"><input type="checkbox" id="filter-show-illiquid" /> 流動性の低い銘柄も表示</label>
