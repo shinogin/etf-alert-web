@@ -20,7 +20,7 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY || !BLUESKY_HANDLE || !BLUESKY_APP_PA
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 const SITE_URL = "https://shinogin.github.io/etf-alert-web";
 const ALERT_THRESHOLD = -3; // この%以下の下落だけを対象にする
-const MAX_ITEMS = 5;
+const MAX_ITEMS = 10; // 表示可能な最大件数。実際に本文に入る件数は文字数制限で自動調整される
 
 function isBusinessDayJST(date) {
   const jst = new Date(date.toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
@@ -104,13 +104,34 @@ async function main() {
     { month: "long", day: "numeric" }
   );
 
-  let text = `📉 ${dateStr} 下落ETF (前日比${ALERT_THRESHOLD}%以下)\n\n`;
-  for (const s of states) {
-    const name = nameByCode[s.code] || s.code;
-    text += `${s.code} ${name} ${s.last_change_pct.toFixed(1)}%\n`;
-  }
+  // Blueskyは1投稿300グラフィームまで。銘柄名を切り詰めつつ、
+  // 収まる件数だけをリストアップする(超過分は「他N件」で要約)。
+  const MAX_GRAPHEMES = 290; // 安全マージン込み
+  const graphemeLen = (s) => Array.from(s).length;
+  const truncateName = (name, max = 18) =>
+    graphemeLen(name) > max ? Array.from(name).slice(0, max).join("") + "…" : name;
+
+  const header = `📉 ${dateStr} 下落ETF (前日比${ALERT_THRESHOLD}%以下)\n\n`;
   const link = `${SITE_URL}/etf/`;
-  text += `\n詳細・過去統計はこちら\n${link}`;
+  const footer = `\n詳細・過去統計はこちら\n${link}`;
+
+  let body = "";
+  let usedCount = 0;
+  for (const s of states) {
+    const name = truncateName(nameByCode[s.code] || s.code);
+    const line = `${s.code} ${name} ${s.last_change_pct.toFixed(1)}%\n`;
+    const remaining = states.length - usedCount - 1;
+    const omittedNote = remaining > 0 ? `他${remaining}件\n` : "";
+    if (graphemeLen(header + body + line + omittedNote + footer) > MAX_GRAPHEMES) {
+      const finalOmitted = states.length - usedCount;
+      body += `他${finalOmitted}件\n`;
+      break;
+    }
+    body += line;
+    usedCount++;
+  }
+
+  let text = header + body + footer;
 
   // linkのバイトオフセットを計算してfacetを作る(クリック可能なリンクにするため)
   const linkStart = byteLength(text.slice(0, text.lastIndexOf(link)));
