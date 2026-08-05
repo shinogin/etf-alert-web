@@ -277,10 +277,12 @@ function applyCatalogView() {
   const aumMinOku = parseInt(document.getElementById("filter-aum-min").value, 10);
   const aumMin = aumMinOku * 100_000_000; // 億円 -> 円
   document.getElementById("aum-min-label").textContent = aumMinOku === 0 ? "指定なし" : `${aumMinOku}億円`;
+  document.getElementById("filter-aum-min-num").value = aumMinOku;
   const turnoverMinMan = parseInt(document.getElementById("filter-turnover-min").value, 10);
   const turnoverMin = turnoverMinMan * 10_000; // 万円 -> 円
   document.getElementById("turnover-min-label").textContent =
     turnoverMinMan === 0 ? "指定なし" : `${turnoverMinMan.toLocaleString()}万円`;
+  document.getElementById("filter-turnover-min-num").value = turnoverMinMan;
   const sortKey = document.getElementById("sort-select").value;
 
   let list = catalogCache.filter((en) => {
@@ -600,6 +602,24 @@ async function updateUserState(code, updates) {
 });
 ["filter-category", "filter-theme", "filter-leveraged", "filter-inverse", "sort-select"].forEach((id) => {
   document.getElementById(id).addEventListener("change", applyCatalogView);
+});
+
+// 数値入力欄 <-> スライダーの同期(iPhoneなどスライダー操作がしづらい環境向け)
+[
+  ["filter-aum-min-num", "filter-aum-min"],
+  ["filter-turnover-min-num", "filter-turnover-min"],
+].forEach(([numId, sliderId]) => {
+  const numEl = document.getElementById(numId);
+  const sliderEl = document.getElementById(sliderId);
+  numEl.addEventListener("input", () => {
+    const min = parseInt(sliderEl.min, 10);
+    const max = parseInt(sliderEl.max, 10);
+    let v = parseInt(numEl.value, 10);
+    if (Number.isNaN(v)) return; // 入力途中(空欄など)は反映しない
+    v = Math.min(max, Math.max(min, v));
+    sliderEl.value = v;
+    applyCatalogView();
+  });
 });
 
 // ---------- ホーム ----------
