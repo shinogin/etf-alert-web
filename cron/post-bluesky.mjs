@@ -70,6 +70,62 @@ async function bskyPost(session, text, facets) {
   return res.json();
 }
 
+// 急落が無かった週も、金曜だけは「その週の値動き」を要約して投稿する。
+// 毎日ゼロ件のまま黙っているとアカウントが放置扱いされ、フォロー・検索経由の
+// 露出機会を失うため、最低週1回はアクティブな状態を保つ。
+async function maybePostWeeklyDigest(now) {
+  const jstDay = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Tokyo" })).getDay();
+  if (jstDay !== 5) return; // 金曜(5)以外は何もしない
+
+  const { data: movers } = await supabase
+    .from("etf_user_state")
+    .select("code, last_change_pct")
+    .order("last_change_pct", { ascending: true })
+    .limit(3);
+  if (!movers || movers.length === 0) return;
+
+  const codes = movers.map((s) => s.code);
+  const { data: catalogRows } = await supabase
+    .from("etf_catalog")
+    .select("code, name")
+    .in("code", codes);
+  const nameByCode = {};
+  (catalogRows || []).forEach((c) => (nameByCode[c.code] = c.name));
+  const truncateName = (name, max = 16) =>
+    Array.from(name).length > max ? Array.from(name).slice(0, max).join("") + "…" : name;
+
+  const dateStr = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Tokyo" })).toLocaleDateString(
+    "ja-JP",
+    { month: "long", day: "numeric" }
+  );
+  const link = `${SITE_URL}/etf/`;
+  const HASHTAGS = ["ETF", "投資", "資産運用"];
+  const tagLine = HASHTAGS.map((t) => `#${t}`).join(" ");
+
+  let body = `${movers
+    .map(
+      (s) => `${s.code} ${truncateName(nameByCode[s.code] || s.code)} ${s.last_change_pct.toFixed(1)}%`
+    )
+    .join("\n")}`;
+
+  const text = `📊 ${dateStr} 今週の値動き下位\n\n${body}\n\n全439銘柄の統計はこちら\n${link}\n\n${tagLine}`;
+
+  const linkStart = byteLength(text.slice(0, text.lastIndexOf(link)));
+  const linkEnd = linkStart + byteLength(link);
+  const facets = [{ index: { byteStart: linkStart, byteEnd: linkEnd }, features: [{ $type: "app.bsky.richtext.facet#link", uri: link }] }];
+  for (const tag of HASHTAGS) {
+    const shown = `#${tag}`;
+    const at = text.lastIndexOf(shown);
+    if (at === -1) continue;
+    const start = byteLength(text.slice(0, at));
+    facets.push({ index: { byteStart: start, byteEnd: start + byteLength(shown) }, features: [{ $type: "app.bsky.richtext.facet#tag", tag }] });
+  }
+
+  const session = await bskyLogin();
+  const result = await bskyPost(session, text, facets);
+  console.log("週次まとめを投稿しました:", result.uri);
+}
+
 async function main() {
   const now = new Date();
   if (!isBusinessDayJST(now)) {
@@ -87,7 +143,8 @@ async function main() {
   if (error) throw error;
 
   if (!states || states.length === 0) {
-    console.log(`本日は${ALERT_THRESHOLD}%以下の下落銘柄がないため投稿をスキップします`);
+    console.log(`本日は${ALERT_THRESHOLD}%以下の下落銘柄がないため通常投稿はスキップします`);
+    await maybePostWeeklyDigest(now);
     return;
   }
 
