@@ -597,11 +597,26 @@ async function updateUserState(code, updates) {
 
 // loadAndRenderPlans は showDetail 内に統合済み
 
-["search-box", "filter-expense-max", "filter-aum-min", "filter-turnover-min"].forEach((id) => {
+["search-box", "filter-expense-max"].forEach((id) => {
   document.getElementById(id).addEventListener("input", applyCatalogView);
 });
 ["filter-category", "filter-theme", "filter-leveraged", "filter-inverse", "sort-select"].forEach((id) => {
   document.getElementById(id).addEventListener("change", applyCatalogView);
+});
+
+// 純資産/売買代金スライダー: ドラッグ操作時はキリの良い単位(10億円/100万円)にスナップさせる。
+// スライダー自体のstep属性は1のままにしておく(数値入力欄からの正確な値の反映を妨げないため。
+// step=10等にすると、JSでの.value代入自体がその倍数に丸められてしまう挙動がある)。
+[
+  ["filter-aum-min", 10],
+  ["filter-turnover-min", 100],
+].forEach(([sliderId, snap]) => {
+  const sliderEl = document.getElementById(sliderId);
+  sliderEl.addEventListener("input", () => {
+    const v = Math.round(parseInt(sliderEl.value, 10) / snap) * snap;
+    sliderEl.value = v;
+    applyCatalogView();
+  });
 });
 
 // 数値入力欄 <-> スライダーの同期(iPhoneなどスライダー操作がしづらい環境向け)
