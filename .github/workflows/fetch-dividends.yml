@@ -1,0 +1,29 @@
+name: 分配金データ更新
+
+on:
+  schedule:
+    # 毎週土曜 07:00 JST = 金曜 22:00 UTC
+    # 分配金は頻繁に変わらないため週1回で十分
+    - cron: "0 22 * * 5"
+  workflow_dispatch: {}
+
+jobs:
+  fetch-dividends:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: 依存関係インストール
+        working-directory: ./cron
+        run: npm install
+
+      - name: 分配金取得
+        working-directory: ./cron
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: node fetch-dividends.mjs
