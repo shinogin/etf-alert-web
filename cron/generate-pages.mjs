@@ -93,6 +93,25 @@ function categoryDefaultLevels(entry) {
   return isBroadIndex ? INDEX_DEFAULT_LEVELS : THEME_DEFAULT_LEVELS;
 }
 
+// 分配金セクションを生成する。
+// 「(銘柄コード) 分配金」という検索需要が実際に確認されたため設置している。
+// 分配金実績がない銘柄(無分配型など)はその旨を明示する。
+function dividendSection(entry, state) {
+  const s = state || {};
+  if (s.annual_dividend == null) {
+    return `<h2>分配金</h2>
+<p style="font-size:13px;">直近1年間の分配金実績は確認できませんでした。無分配型のETFであるか、設定から間もない可能性があります。</p>`;
+  }
+  return `<h2>分配金</h2>
+<table>
+  <tr><th>直近1年の分配金合計</th><td>${s.annual_dividend}円</td></tr>
+  <tr><th>分配金利回り(参考)</th><td>${s.dividend_yield != null ? s.dividend_yield + "%" : "—"}</td></tr>
+  <tr><th>直近の分配金</th><td>${s.last_dividend_amount != null ? s.last_dividend_amount + "円" : "—"}</td></tr>
+  <tr><th>直近の支払日</th><td>${s.last_dividend_date || "—"}</td></tr>
+</table>
+<p style="font-size:12px;opacity:0.6;">直近1年間に支払われた分配金の実績値です。利回りは「直近1年の分配金合計 ÷ 現在価格」で算出した参考値で、将来の分配金を保証するものではありません。税金は考慮していません。</p>`;
+}
+
 // 銘柄ごとのリバウンド統計表を生成する。
 // 対象外(レバレッジ/インバース)の場合は空文字を返し、セクションごと非表示にする。
 function reboundStatsSection(entry) {
@@ -207,7 +226,7 @@ async function main() {
   );
   const states = await fetchAll(
     "etf_user_state",
-    "code,last_price,last_change_pct,last_updated_at,last_volume,last_turnover"
+    "code,last_price,last_change_pct,last_updated_at,last_volume,last_turnover,annual_dividend,dividend_yield,last_dividend_date,last_dividend_amount"
   );
   const { data: statsRows } = await supabase.from("trade_stats").select("*").limit(1);
   const trades = await fetchAll(
@@ -236,10 +255,13 @@ async function main() {
       .map((t) => `<span class="chip">${esc(t)}</span>`)
       .join("");
 
-    const title = `${e.name}（${e.code}）下落統計・信託報酬・純資産｜ETF下落統計データベース`;
-    const description = `${e.name}(${e.code})の信託報酬${e.expense_ratio}%・純資産${aumText(
-      e.aum
-    )}・前日比${pct(s.last_change_pct, 1)}。下落局面での過去統計を無料で公開。`;
+    const title = `${e.name}（${e.code}）分配金・利回り・信託報酬・下落統計｜ETF下落統計データベース`;
+    const description = `${e.name}(${e.code})の分配金${
+      s.annual_dividend != null ? `年${s.annual_dividend}円(利回り${s.dividend_yield ?? "—"}%)` : "情報"
+    }・信託報酬${e.expense_ratio}%・純資産${aumText(e.aum)}・前日比${pct(
+      s.last_change_pct,
+      1
+    )}。下落局面での過去統計とあわせて無料で公開。`;
 
     const body = `
 <h1>${esc(e.name)}</h1>
@@ -261,6 +283,8 @@ async function main() {
   <tr><th>売買代金(参考)</th><td>${s.last_turnover ? yen(s.last_turnover) + "/日" : "—"}</td></tr>
   <tr><th>更新時刻</th><td>${s.last_updated_at ? new Date(s.last_updated_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" }) : "—"}</td></tr>
 </table>
+
+${dividendSection(e, s)}
 
 ${reboundStatsSection(e)}
 
@@ -296,6 +320,7 @@ ${affiliateBlockHtml()}
   const listBody = `
 <h1>日本ETF 下落統計データベース（全${catalog.length}銘柄）</h1>
 <p style="font-size:14px;">日本上場の全ETFについて、信託報酬・純資産・下落後のリバウンド統計を毎日自動更新しています。</p>
+<a class="cta" href="${SITE_URL}/haito/">分配金利回りランキングを見る</a>
 <a class="cta" href="${SITE_URL}/jisseki/">実際の売買記録・成績を見る</a>
 ${rows}
 `;
@@ -306,6 +331,53 @@ ${rows}
       description: `日本上場ETF全${catalog.length}銘柄の信託報酬・純資産・下落統計を無料公開。`,
       canonical: `${SITE_URL}/etf/`,
       bodyHtml: listBody,
+    })
+  );
+
+  // ---------- 高配当ランキングページ ----------
+  // 「高配当ETF ランキング」「(コード) 分配金」は検索需要が大きく、
+  // 実際に分配金関連のクエリからの流入が確認されているため専用ページを設ける。
+  console.log("高配当ランキングページ生成中...");
+  const RANK_LIMIT = 50;
+  const ranked = catalog
+    .map((e) => ({ e, s: stateByCode[e.code] || {} }))
+    .filter((x) => x.s.dividend_yield != null && x.s.dividend_yield > 0)
+    .sort((a, b) => b.s.dividend_yield - a.s.dividend_yield)
+    .slice(0, RANK_LIMIT);
+
+  const rankRows = ranked
+    .map(
+      ({ e, s }, i) => `<tr>
+      <td>${i + 1}</td>
+      <td><a href="${SITE_URL}/etf/${e.code}/">${esc(e.name)}</a><br/><span class="code">${e.code}</span></td>
+      <td style="white-space:nowrap;"><strong>${s.dividend_yield}%</strong></td>
+      <td style="white-space:nowrap;">${s.annual_dividend}円</td>
+      <td style="white-space:nowrap;">${e.expense_ratio}%</td>
+    </tr>`
+    )
+    .join("\n");
+
+  const rankBody = `
+<h1>日本ETF 分配金利回りランキング TOP${ranked.length}</h1>
+<p style="font-size:14px;">東証上場ETFを、直近1年間の分配金実績にもとづく利回り順に並べています。毎日自動更新。利回りは「直近1年の分配金合計 ÷ 現在価格」で算出した参考値です。</p>
+<div style="overflow-x:auto;">
+<table>
+  <tr><th style="width:auto;">順位</th><th style="width:auto;">銘柄</th><th style="width:auto;">利回り</th><th style="width:auto;">年間分配金</th><th style="width:auto;">信託報酬</th></tr>
+  ${rankRows}
+</table>
+</div>
+<p style="font-size:12px;opacity:0.6;">利回りが高い銘柄には、カバードコール型など特有の仕組みを持つものや、価格下落によって見かけ上の利回りが上昇しているものが含まれます。利回りの高さだけで優劣は判断できません。税金は考慮していません。本ページは投資助言ではありません。</p>
+
+<a class="cta" href="${SITE_URL}/etf/">全${catalog.length}銘柄の一覧を見る</a>
+`;
+  mkdirSync(`${OUT_ROOT}/haito`, { recursive: true });
+  writeFileSync(
+    `${OUT_ROOT}/haito/index.html`,
+    pageLayout({
+      title: `日本ETF分配金利回りランキング TOP${ranked.length}（毎日自動更新）`,
+      description: `東証上場ETFを分配金利回り順に掲載。年間分配金・信託報酬もあわせて比較できます。毎日自動更新。`,
+      canonical: `${SITE_URL}/haito/`,
+      bodyHtml: rankBody,
     })
   );
 
@@ -368,6 +440,7 @@ ${affiliateBlockHtml()}
   const urls = [
     `${SITE_URL}/`,
     `${SITE_URL}/etf/`,
+    `${SITE_URL}/haito/`,
     `${SITE_URL}/jisseki/`,
     ...sorted.map((e) => `${SITE_URL}/etf/${e.code}/`),
   ];
