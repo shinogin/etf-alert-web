@@ -114,6 +114,38 @@ function dividendSection(entry, state) {
 
 // 銘柄ごとのリバウンド統計表を生成する。
 // 対象外(レバレッジ/インバース)の場合は空文字を返し、セクションごと非表示にする。
+function relatedSection(entry, catalog, stateByCode) {
+  const themes = new Set(entry.themes || []);
+  const scored = catalog
+    .filter((o) => o.code !== entry.code)
+    .map((o) => {
+      let score = 0;
+      if (o.category === entry.category) score += 3;
+      if (o.index_name && o.index_name === entry.index_name) score += 4;
+      (o.themes || []).forEach((t) => { if (themes.has(t)) score += 2; });
+      if (o.is_leveraged === entry.is_leveraged) score += 1;
+      if (o.is_inverse === entry.is_inverse) score += 1;
+      return { o, score, aum: o.aum || 0 };
+    })
+    .filter((x) => x.score >= 3)
+    .sort((a, b) => b.score - a.score || b.aum - a.aum)
+    .slice(0, 8);
+  if (!scored.length) return "";
+  const rows = scored
+    .map(({ o }) => {
+      const st = stateByCode[o.code] || {};
+      const cls = st.last_change_pct < 0 ? "pct-down" : "pct-up";
+      return `  <tr><td><a href="${SITE_URL}/etf/${esc(o.code)}/">${esc(o.name)}</a><br/><span class="code">${esc(o.code)}</span></td><td>${o.expense_ratio}%</td><td>${aumText(o.aum)}</td><td class="${cls}">${pct(st.last_change_pct, 2)}</td></tr>`;
+    })
+    .join("\n");
+  return `<h2>${esc(entry.name)}と似た特徴を持つETF</h2>
+<p style="font-size:13px;opacity:0.8;">同じジャンル・連動指数・テーマのETFです。信託報酬や純資産を比較して検討できます。</p>
+<table>
+  <tr><th>銘柄</th><th>信託報酬</th><th>純資産</th><th>前日比</th></tr>
+${rows}
+</table>`;
+}
+
 function reboundStatsSection(entry) {
   const levels = categoryDefaultLevels(entry);
   if (!levels) {
@@ -288,11 +320,13 @@ ${dividendSection(e, s)}
 
 ${reboundStatsSection(e)}
 
+${relatedSection(e, catalog, stateByCode)}
+
 <a class="cta" href="${SITE_URL}/?code=${esc(e.code)}">アプリでこの銘柄を監視・通知登録する</a>
 
 ${affiliateBlockHtml()}
 
-<a class="back" href="${SITE_URL}/etf/">← 一覧に戻る</a>
+<p class="back"><a href="${SITE_URL}/etf/">← 全ETF一覧</a>　<a href="${SITE_URL}/haito/">分配金利回りランキング</a>　<a href="${SITE_URL}/jisseki/">実際の売買記録</a></p>
 `;
 
     const html = pageLayout({
@@ -437,16 +471,17 @@ ${affiliateBlockHtml()}
 
   // ---------- sitemap.xml ----------
   console.log("sitemap.xml生成中...");
+  const today = new Date().toISOString().slice(0, 10);
   const urls = [
-    `${SITE_URL}/`,
-    `${SITE_URL}/etf/`,
-    `${SITE_URL}/haito/`,
-    `${SITE_URL}/jisseki/`,
-    ...sorted.map((e) => `${SITE_URL}/etf/${e.code}/`),
+    { loc: `${SITE_URL}/`, priority: "1.0", changefreq: "daily" },
+    { loc: `${SITE_URL}/etf/`, priority: "0.9", changefreq: "daily" },
+    { loc: `${SITE_URL}/haito/`, priority: "0.9", changefreq: "weekly" },
+    { loc: `${SITE_URL}/jisseki/`, priority: "0.7", changefreq: "weekly" },
+    ...sorted.map((e) => ({ loc: `${SITE_URL}/etf/${e.code}/`, priority: "0.6", changefreq: "daily" })),
   ];
   const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${urls.map((u) => `  <url><loc>${u}</loc></url>`).join("\n")}
+${urls.map((u) => `  <url><loc>${u.loc}</loc><lastmod>${today}</lastmod><changefreq>${u.changefreq}</changefreq><priority>${u.priority}</priority></url>`).join("\n")}
 </urlset>`;
   writeFileSync(`${OUT_ROOT}/sitemap.xml`, sitemap);
 
