@@ -233,6 +233,113 @@ ${bodyHtml}
 }
 
 // ---------- データ取得 ----------
+// ---------- 銘柄固有の下落ヒストリ(Yahoo Finance) ----------
+// 分類共通のリバウンド統計とは別に、その銘柄自身の過去2年の実データを集計する。
+// 分割は adjclose で調整し、それでも残る異常値(±30%超)は Blueprint §10 に従い除外する。
+const YF_UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+const OWN_MIN_SAMPLES = 5;
+const OWN_HORIZONS = [10, 20];
+
+async function fetchOwnHistory(code) {
+  try {
+    const res = await fetch(
+      `https://query1.finance.yahoo.com/v8/finance/chart/${code}.T?range=2y&interval=1d`,
+      { headers: { "User-Agent": YF_UA } }
+    );
+    if (!res.ok) return null;
+    const r = (await res.json()).chart?.result?.[0];
+    if (!r) return null;
+    const ts = r.timestamp || [];
+    const px = r.indicators?.adjclose?.[0]?.adjclose || r.indicators?.quote?.[0]?.close || [];
+    return ts
+      .map((t, i) => ({ d: new Date(t * 1000).toISOString().slice(0, 10), c: px[i] }))
+      .filter((x) => x.c != null && x.c > 0);
+  } catch (e) {
+    return null;
+  }
+}
+
+function ownDropStats(rows, threshold) {
+  if (!rows || rows.length < 60) return null;
+  const events = [];
+  for (let i = 1; i < rows.length; i++) {
+    const chg = ((rows[i].c - rows[i - 1].c) / rows[i - 1].c) * 100;
+    if (!isFinite(chg) || Math.abs(chg) > 30) continue;
+    if (chg <= threshold) events.push({ i, date: rows[i].d, chg: +chg.toFixed(2), close: rows[i].c });
+  }
+  const out = { count: events.length, latest: events[events.length - 1] || null, horizons: {} };
+  for (const h of OWN_HORIZONS) {
+    const rets = events
+      .filter((e) => e.i + h < rows.length)
+      .map((e) => ((rows[e.i + h].c - e.close) / e.close) * 100)
+      .filter((r) => isFinite(r) && Math.abs(r) <= 100);
+    if (rets.length < OWN_MIN_SAMPLES) { out.horizons[h] = null; continue; }
+    rets.sort((a, b) => a - b);
+    out.horizons[h] = {
+      n: rets.length,
+      win: +((rets.filter((r) => r > 0).length / rets.length) * 100).toFixed(1),
+      avg: +(rets.reduce((a, b) => a + b, 0) / rets.length).toFixed(2),
+      med: +rets[Math.floor(rets.length / 2)].toFixed(2),
+    };
+  }
+  return out;
+}
+
+async function fetchAllOwnStats(catalog) {
+  const results = {};
+  let idx = 0, ok = 0, fail = 0;
+  async function worker() {
+    for (;;) {
+      const i = idx++;
+      if (i >= catalog.length) return;
+      const e = catalog[i];
+      const rows = await fetchOwnHistory(e.code);
+      if (!rows) { fail++; continue; }
+      ok++;
+      const threshold = e.is_leveraged || e.is_inverse ? -5 : -3;
+      results[e.code] = { threshold, stats: ownDropStats(rows, threshold) };
+      await new Promise((r) => setTimeout(r, 60));
+    }
+  }
+  await Promise.all(Array.from({ length: 4 }, worker));
+  console.log(`銘柄固有ヒストリ: 成功${ok}件 / 失敗${fail}件`);
+  return results;
+}
+function ownHistorySection(entry, own) {
+  if (!own || !own.stats) return "";
+  const { threshold, stats } = own;
+  const t = threshold;
+  if (stats.count === 0) {
+    return `<h2>${esc(entry.name)}の下落実績(過去2年)</h2>
+<p style="font-size:13px;">過去2年間、前日比${t}%以上の下落は<strong>一度もありません</strong>でした。値動きが比較的おだやかな銘柄です。</p>`;
+  }
+  const lat = stats.latest;
+  const latText = lat
+    ? `直近では<strong>${lat.date}</strong>に<strong>${lat.chg}%</strong>の下落がありました。`
+    : "";
+  const usable = OWN_HORIZONS.filter((h) => stats.horizons[h]);
+  if (!usable.length) {
+    return `<h2>${esc(entry.name)}の下落実績(過去2年)</h2>
+<p style="font-size:13px;">過去2年間で前日比${t}%以上下落した日は<strong>${stats.count}回</strong>でした。${latText}</p>
+<p style="font-size:12px;opacity:0.6;">サンプル数が${OWN_MIN_SAMPLES}件未満のため、この銘柄単独のリバウンド勝率は掲載していません。下の分類別統計を参考にしてください。</p>`;
+  }
+  const rows = usable
+    .map((h) => {
+      const x = stats.horizons[h];
+      const cls = x.avg > 0 ? "pct-up" : x.avg < 0 ? "pct-down" : "";
+      return `  <tr><th style="width:auto;">${h}営業日後<br/><small>n=${x.n}</small></th><td>${x.win}%</td><td class="${cls}">${x.avg > 0 ? "+" : ""}${x.avg}%</td><td>${x.med > 0 ? "+" : ""}${x.med}%</td></tr>`;
+    })
+    .join("\n");
+  return `<h2>${esc(entry.name)}の下落実績(過去2年)</h2>
+<p style="font-size:13px;">過去2年間で前日比${t}%以上下落した日は<strong>${stats.count}回</strong>ありました。${latText}その下落日を起点に、その後この銘柄自身がどう動いたかを集計しています。</p>
+<table>
+  <tr><th style="width:auto;">経過</th><th>勝率</th><th>平均</th><th>中央値</th></tr>
+${rows}
+</table>
+<p style="font-size:12px;opacity:0.6;">株式分割の影響を除いた調整後価格で計算しています。過去2年という短期間の集計であり、将来の値動きを保証するものではありません。</p>`;
+}
+
 async function fetchAll(table, select) {
   const pageSize = 1000;
   let from = 0;
@@ -266,6 +373,9 @@ async function main() {
     "code,name,position_type,alert_level,entry_date,entry_price,quantity,exit_date,exit_price,pnl,return_pct,holding_days,is_closed,memo"
   );
   const stats = (statsRows && statsRows[0]) || {};
+
+  console.log("銘柄固有の下落ヒストリを取得中...");
+  const ownStats = await fetchAllOwnStats(catalog);
 
   const stateByCode = {};
   states.forEach((s) => (stateByCode[s.code] = s));
@@ -317,6 +427,8 @@ async function main() {
 </table>
 
 ${dividendSection(e, s)}
+
+${ownHistorySection(e, ownStats[e.code])}
 
 ${reboundStatsSection(e)}
 
