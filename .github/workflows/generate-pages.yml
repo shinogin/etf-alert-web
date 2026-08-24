@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  actions: write   # Deploy Pages をワークフロー起動するために必要
 
 jobs:
   generate-pages:
@@ -31,9 +32,24 @@ jobs:
         run: node generate-pages.mjs
 
       - name: 変更をコミット
+        id: commit
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add web
-          git diff --staged --quiet || git commit -m "chore: 公開ページを自動更新"
-          git push
+          if git diff --staged --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "変更なし: デプロイをスキップします"
+          else
+            git commit -m "chore: 公開ページを自動更新"
+            git push
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # GITHUB_TOKEN による push は他のワークフローを起動しない仕様のため、
+      # Deploy Pages をここから明示的に呼び出す(これがないと公開サイトに反映されない)。
+      - name: 公開サイトへデプロイ
+        if: steps.commit.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run deploy-pages.yml --ref main
