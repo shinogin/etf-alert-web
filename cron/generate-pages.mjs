@@ -470,7 +470,7 @@ ${todayDrops
     (x, i) =>
       `  <tr><td>${i + 1}</td><td><a href="${SITE_URL}/etf/${esc(x.e.code)}/">${esc(x.e.name)}</a><br/><span class="code">${esc(x.e.code)}</span></td><td class="pct-down">${pct(x.chg, 2)}</td></tr>`
   )
-  .join("\\n")}
+  .join("\n")}
 </table>`
     : "";
 
@@ -489,10 +489,10 @@ ${todayDrops
           const st = stateByCode[e.code] || {};
           return `<a class="list-row" href="${SITE_URL}/etf/${esc(e.code)}/"><span class="n">${esc(e.name)}</span><span class="c">${esc(e.code)} / ${pct(st.last_change_pct, 1)}</span></a>`;
         })
-        .join("\\n");
-      return `<h2>${esc(c)}（${byCategory[c].length}銘柄）</h2>\\n${items}`;
+        .join("\n");
+      return `<h2>${esc(c)}（${byCategory[c].length}銘柄）</h2>\n${items}`;
     })
-    .join("\\n");
+    .join("\n");
 
   const listBody = `
 <h1>日本ETF 下落統計データベース（全${catalog.length}銘柄）</h1>
