@@ -454,21 +454,55 @@ ${affiliateBlockHtml()}
   // ---------- 一覧ページ ----------
   console.log("一覧ページ生成中...");
   const sorted = [...catalog].sort((a, b) => a.code.localeCompare(b.code));
-  const rows = sorted
-    .map((e) => {
-      const s = stateByCode[e.code] || {};
-      return `<a class="list-row" href="${SITE_URL}/etf/${e.code}/"><span class="n">${esc(
-        e.name
-      )}</span><span class="c">${e.code} / ${pct(s.last_change_pct, 1)}</span></a>`;
+  // 本日の下落率ランキング(毎日変わるため、このページ自身の更新性を示す内容になる)
+  const todayDrops = [...catalog]
+    .map((e) => ({ e, chg: (stateByCode[e.code] || {}).last_change_pct }))
+    .filter((x) => typeof x.chg === "number" && x.chg < 0)
+    .sort((a, b) => a.chg - b.chg)
+    .slice(0, 20);
+  const dropSection = todayDrops.length
+    ? `<h2>本日の下落率ランキング（上位${todayDrops.length}銘柄）</h2>
+<p style="font-size:13px;opacity:0.8;">前営業日の終値と比べて下落率が大きい順です。毎営業日の取引終了後に自動更新しています。</p>
+<table>
+  <tr><th>順位</th><th>銘柄</th><th>前日比</th></tr>
+${todayDrops
+  .map(
+    (x, i) =>
+      `  <tr><td>${i + 1}</td><td><a href="${SITE_URL}/etf/${esc(x.e.code)}/">${esc(x.e.name)}</a><br/><span class="code">${esc(x.e.code)}</span></td><td class="pct-down">${pct(x.chg, 2)}</td></tr>`
+  )
+  .join("\\n")}
+</table>`
+    : "";
+
+  // ジャンル別に見出しを付けて並べる(見出しがないと437件の羅列になり、
+  // 検索エンジンからも読者からも構造が読み取れないため)
+  const CATEGORY_ORDER = ["国内株式", "外国株式", "債券", "REIT", "コモディティ", "その他"];
+  const byCategory = {};
+  for (const e of sorted) {
+    const c = CATEGORY_ORDER.includes(e.category) ? e.category : "その他";
+    (byCategory[c] = byCategory[c] || []).push(e);
+  }
+  const categorySections = CATEGORY_ORDER.filter((c) => byCategory[c]?.length)
+    .map((c) => {
+      const items = byCategory[c]
+        .map((e) => {
+          const st = stateByCode[e.code] || {};
+          return `<a class="list-row" href="${SITE_URL}/etf/${esc(e.code)}/"><span class="n">${esc(e.name)}</span><span class="c">${esc(e.code)} / ${pct(st.last_change_pct, 1)}</span></a>`;
+        })
+        .join("\\n");
+      return `<h2>${esc(c)}（${byCategory[c].length}銘柄）</h2>\\n${items}`;
     })
-    .join("\n");
+    .join("\\n");
 
   const listBody = `
 <h1>日本ETF 下落統計データベース（全${catalog.length}銘柄）</h1>
-<p style="font-size:14px;">日本上場の全ETFについて、信託報酬・純資産・下落後のリバウンド統計を毎日自動更新しています。</p>
+<p style="font-size:14px;">日本の証券取引所に上場しているETF全${catalog.length}銘柄について、信託報酬・純資産・分配金・前日比を毎営業日に自動更新して掲載しています。各銘柄のページでは、その銘柄が過去2年間に前日比で大きく下落した回数と、下落した後に実際どう動いたかの集計も確認できます。</p>
+<p style="font-size:14px;">下落局面での買い付けを検討する際の判断材料として、ジャンル別に一覧できるようにまとめました。銘柄名をタップすると個別ページに移動します。</p>
 <a class="cta" href="${SITE_URL}/haito/">分配金利回りランキングを見る</a>
 <a class="cta" href="${SITE_URL}/jisseki/">実際の売買記録・成績を見る</a>
-${rows}
+${dropSection}
+<h2>ジャンル別 全銘柄一覧</h2>
+${categorySections}
 `;
   writeFileSync(
     `${OUT_ROOT}/etf/index.html`,
