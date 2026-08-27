@@ -101,6 +101,26 @@ function categoryDefaultLevels(catalogEntry) {
   return isBroadIndex ? INDEX_DEFAULT_LEVELS : THEME_DEFAULT_LEVELS;
 }
 
+// リバウンド統計(過去10年バックテスト、流動性フィルター後、分割等の異常値除外)
+// 出典: 2026-07 実施のバックテスト。カテゴリ(指数/テーマ)×通知レベル×経過営業日ごとの
+// 勝率(win,%)・平均リターン(avg,%)・中央値リターン(med,%)・サンプル数(n)。
+// 詳細(複数日数の一覧)はETF詳細画面で確認できるため、通知本文には代表的に10営業日のみ表示する。
+const REBOUND_MATRIX = {"index":{"-3":{"10":{"n":1472,"win":65.5,"avg":1.5,"med":2.3},"15":{"n":1467,"win":65.6,"avg":2.1,"med":2.7},"20":{"n":1454,"win":70.1,"avg":3.7,"med":3.3},"30":{"n":1436,"win":74.0,"avg":4.9,"med":5.3},"63":{"n":1411,"win":79.9,"avg":9.5,"med":9.5}},"-5":{"10":{"n":326,"win":70.6,"avg":3.5,"med":4.8},"15":{"n":325,"win":69.8,"avg":5.0,"med":6.0},"20":{"n":324,"win":77.2,"avg":6.9,"med":7.9},"30":{"n":321,"win":76.3,"avg":7.4,"med":8.2},"63":{"n":319,"win":88.7,"avg":14.5,"med":16.1}},"-8":{"10":{"n":72,"win":81.9,"avg":7.3,"med":7.7},"15":{"n":72,"win":81.9,"avg":10.0,"med":11.9},"20":{"n":72,"win":84.7,"avg":12.0,"med":15.4},"30":{"n":72,"win":86.1,"avg":11.1,"med":14.3},"63":{"n":72,"win":87.5,"avg":18.5,"med":24.2}}},"theme":{"-3":{"10":{"n":4939,"win":59.9,"avg":1.1,"med":1.6},"15":{"n":4907,"win":59.7,"avg":1.5,"med":1.7},"20":{"n":4882,"win":60.6,"avg":2.3,"med":2.3},"30":{"n":4825,"win":61.1,"avg":2.6,"med":2.7},"63":{"n":4657,"win":66.3,"avg":6.8,"med":5.4}},"-7":{"10":{"n":600,"win":63.0,"avg":2.2,"med":3.8},"15":{"n":593,"win":65.4,"avg":3.6,"med":5.7},"20":{"n":590,"win":65.9,"avg":4.5,"med":5.9},"30":{"n":583,"win":64.8,"avg":3.5,"med":6.3},"63":{"n":575,"win":65.2,"avg":8.2,"med":8.3}},"-10":{"10":{"n":242,"win":69.0,"avg":4.3,"med":6.9},"15":{"n":241,"win":68.5,"avg":5.8,"med":11.4},"20":{"n":241,"win":68.9,"avg":6.9,"med":11.3},"30":{"n":240,"win":68.3,"avg":5.4,"med":10.4},"63":{"n":240,"win":68.3,"avg":10.9,"med":11.2}}}};
+
+// ---- 複数日「じわじわ型」下落の判定 ----------------------------------------
+// バックテストの知見: 同じ下落幅でも「単日急落型」のほうが短期リバウンドの質が高く、
+// 数営業日かけてじわじわ下げた場合は同等のリバウンドを得るのにより深い累積下落が必要。
+// 3営業日累積で 指数系 -14% / テーマ系 -16% を、単日レベルと同等の買い場と見なす。
+const CUM_WINDOW_DAYS = 3;
+const CUM_INDEX_LEVEL = -14;
+const CUM_THEME_LEVEL = -16;
+
+function cumulativeThreshold(catalogEntry) {
+  const catLevels = categoryDefaultLevels(catalogEntry);
+  if (catLevels == null) return null; // レバレッジ/インバースは対象外
+  return catLevels === THEME_DEFAULT_LEVELS ? CUM_THEME_LEVEL : CUM_INDEX_LEVEL;
+}
+
 async function main() {
   const now = new Date();
   if (!isBusinessDayJST(now)) {
@@ -152,7 +172,7 @@ async function main() {
       .eq("code", state.code)
       .lt("date", today)
       .order("date", { ascending: false })
-      .limit(1);
+      .limit(CUM_WINDOW_DAYS);
     const previousClose = prevRows && prevRows[0] ? prevRows[0].close : yahooPrevClose;
 
     if (previousClose == null) {
@@ -205,11 +225,6 @@ async function main() {
       const plan = (state.purchase_plan_item || []).find((p) => p.level === reached);
       const planText = plan ? `。計画: ${plan.amount.toLocaleString()}円` : "";
 
-      // リバウンド統計(過去10年バックテスト、流動性フィルター後、分割等の異常値除外)
-      // 出典: 2026-07 実施のバックテスト。カテゴリ(指数/テーマ)×通知レベル×経過営業日ごとの
-      // 勝率(win,%)・平均リターン(avg,%)・中央値リターン(med,%)・サンプル数(n)。
-      // 詳細(複数日数の一覧)はETF詳細画面で確認できるため、通知本文には代表的に10営業日のみ表示する。
-      const REBOUND_MATRIX = {"index":{"-3":{"10":{"n":1472,"win":65.5,"avg":1.5,"med":2.3},"15":{"n":1467,"win":65.6,"avg":2.1,"med":2.7},"20":{"n":1454,"win":70.1,"avg":3.7,"med":3.3},"30":{"n":1436,"win":74.0,"avg":4.9,"med":5.3},"63":{"n":1411,"win":79.9,"avg":9.5,"med":9.5}},"-5":{"10":{"n":326,"win":70.6,"avg":3.5,"med":4.8},"15":{"n":325,"win":69.8,"avg":5.0,"med":6.0},"20":{"n":324,"win":77.2,"avg":6.9,"med":7.9},"30":{"n":321,"win":76.3,"avg":7.4,"med":8.2},"63":{"n":319,"win":88.7,"avg":14.5,"med":16.1}},"-8":{"10":{"n":72,"win":81.9,"avg":7.3,"med":7.7},"15":{"n":72,"win":81.9,"avg":10.0,"med":11.9},"20":{"n":72,"win":84.7,"avg":12.0,"med":15.4},"30":{"n":72,"win":86.1,"avg":11.1,"med":14.3},"63":{"n":72,"win":87.5,"avg":18.5,"med":24.2}}},"theme":{"-3":{"10":{"n":4939,"win":59.9,"avg":1.1,"med":1.6},"15":{"n":4907,"win":59.7,"avg":1.5,"med":1.7},"20":{"n":4882,"win":60.6,"avg":2.3,"med":2.3},"30":{"n":4825,"win":61.1,"avg":2.6,"med":2.7},"63":{"n":4657,"win":66.3,"avg":6.8,"med":5.4}},"-7":{"10":{"n":600,"win":63.0,"avg":2.2,"med":3.8},"15":{"n":593,"win":65.4,"avg":3.6,"med":5.7},"20":{"n":590,"win":65.9,"avg":4.5,"med":5.9},"30":{"n":583,"win":64.8,"avg":3.5,"med":6.3},"63":{"n":575,"win":65.2,"avg":8.2,"med":8.3}},"-10":{"10":{"n":242,"win":69.0,"avg":4.3,"med":6.9},"15":{"n":241,"win":68.5,"avg":5.8,"med":11.4},"20":{"n":241,"win":68.9,"avg":6.9,"med":11.3},"30":{"n":240,"win":68.3,"avg":5.4,"med":10.4},"63":{"n":240,"win":68.3,"avg":10.9,"med":11.2}}}};
 
       const catLevels = categoryDefaultLevels(state.etf_catalog);
       const rebGroup = catLevels == null ? null : catLevels === THEME_DEFAULT_LEVELS ? "theme" : "index";
@@ -224,20 +239,68 @@ async function main() {
         code: state.code,
       });
 
-      for (const sub of subscriptions || []) {
-        try {
-          await webpush.sendNotification(
-            { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-            payload
-          );
-        } catch (e) {
-          console.warn(`通知送信失敗(${sub.endpoint.slice(0, 30)}...):`, e.statusCode || e.message);
-          if (e.statusCode === 404 || e.statusCode === 410) {
-            await supabase.from("push_subscription").delete().eq("id", sub.id);
+      await sendToAll(subscriptions, payload);
+      console.log(`${state.code}: ${reached}%到達を通知しました`);
+    } else {
+      // 単日では閾値に届かなかった場合のみ、複数日「じわじわ型」の累積下落を判定する。
+      // (最終日に大きく下げたケースは単日通知のほうが本質なので二重通知しない)
+      const cumThreshold = cumulativeThreshold(state.etf_catalog);
+      if (cumThreshold != null && prevRows && prevRows.length >= CUM_WINDOW_DAYS) {
+        const baseClose = prevRows[CUM_WINDOW_DAYS - 1].close;
+        if (baseClose > 0) {
+          const cumPct = ((close - baseClose) / baseClose) * 100;
+          if (cumPct <= cumThreshold && cumPct > -60) {
+            // 当日すでに同じ累積レベルで通知済みなら送らない(スキーマ変更不要の重複防止)
+            const { data: dup } = await supabase
+              .from("notification_record")
+              .select("id")
+              .eq("code", state.code)
+              .eq("date", today)
+              .eq("level", cumThreshold)
+              .limit(1);
+            if (!dup || dup.length === 0) {
+              await supabase.from("notification_record").insert({
+                code: state.code,
+                date: today,
+                fired_at: now.toISOString(),
+                level: cumThreshold,
+                price: close,
+                change_pct: cumPct,
+              });
+
+              const plan = (state.purchase_plan_item || []).find((p) => p.level === cumThreshold);
+              const planText = plan ? `。計画: ${plan.amount.toLocaleString()}円` : "";
+
+              const payload = JSON.stringify({
+                title: state.code,
+                body:
+                  `${CUM_WINDOW_DAYS}営業日で累計 ${cumPct.toFixed(1)}%（じわじわ型 ${cumThreshold}%到達）${planText}` +
+                  `\n参考: 数日かけた下落は単日急落よりリバウンドが弱いため、この深さを買い場の目安としています`,
+                code: state.code,
+              });
+
+              await sendToAll(subscriptions, payload);
+              console.log(`${state.code}: ${CUM_WINDOW_DAYS}営業日累計${cumPct.toFixed(1)}%(じわじわ型)を通知しました`);
+            }
           }
         }
       }
-      console.log(`${state.code}: ${reached}%到達を通知しました`);
+    }
+  }
+}
+
+async function sendToAll(subscriptions, payload) {
+  for (const sub of subscriptions || []) {
+    try {
+      await webpush.sendNotification(
+        { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+        payload
+      );
+    } catch (e) {
+      console.warn(`通知送信失敗(${sub.endpoint.slice(0, 30)}...):`, e.statusCode || e.message);
+      if (e.statusCode === 404 || e.statusCode === 410) {
+        await supabase.from("push_subscription").delete().eq("id", sub.id);
+      }
     }
   }
 }
