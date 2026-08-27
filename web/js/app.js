@@ -54,6 +54,28 @@ function categoryDefaultLevels(entry) {
 const REBOUND_MATRIX = {"index":{"-3":{"10":{"n":1472,"win":65.5,"avg":1.5,"med":2.3},"15":{"n":1467,"win":65.6,"avg":2.1,"med":2.7},"20":{"n":1454,"win":70.1,"avg":3.7,"med":3.3},"30":{"n":1436,"win":74.0,"avg":4.9,"med":5.3},"63":{"n":1411,"win":79.9,"avg":9.5,"med":9.5}},"-5":{"10":{"n":326,"win":70.6,"avg":3.5,"med":4.8},"15":{"n":325,"win":69.8,"avg":5.0,"med":6.0},"20":{"n":324,"win":77.2,"avg":6.9,"med":7.9},"30":{"n":321,"win":76.3,"avg":7.4,"med":8.2},"63":{"n":319,"win":88.7,"avg":14.5,"med":16.1}},"-8":{"10":{"n":72,"win":81.9,"avg":7.3,"med":7.7},"15":{"n":72,"win":81.9,"avg":10.0,"med":11.9},"20":{"n":72,"win":84.7,"avg":12.0,"med":15.4},"30":{"n":72,"win":86.1,"avg":11.1,"med":14.3},"63":{"n":72,"win":87.5,"avg":18.5,"med":24.2}}},"theme":{"-3":{"10":{"n":4939,"win":59.9,"avg":1.1,"med":1.6},"15":{"n":4907,"win":59.7,"avg":1.5,"med":1.7},"20":{"n":4882,"win":60.6,"avg":2.3,"med":2.3},"30":{"n":4825,"win":61.1,"avg":2.6,"med":2.7},"63":{"n":4657,"win":66.3,"avg":6.8,"med":5.4}},"-7":{"10":{"n":600,"win":63.0,"avg":2.2,"med":3.8},"15":{"n":593,"win":65.4,"avg":3.6,"med":5.7},"20":{"n":590,"win":65.9,"avg":4.5,"med":5.9},"30":{"n":583,"win":64.8,"avg":3.5,"med":6.3},"63":{"n":575,"win":65.2,"avg":8.2,"med":8.3}},"-10":{"10":{"n":242,"win":69.0,"avg":4.3,"med":6.9},"15":{"n":241,"win":68.5,"avg":5.8,"med":11.4},"20":{"n":241,"win":68.9,"avg":6.9,"med":11.3},"30":{"n":240,"win":68.3,"avg":5.4,"med":10.4},"63":{"n":240,"win":68.3,"avg":10.9,"med":11.2}}}};
 const REBOUND_HORIZON_LABELS = { "10": "10営業日", "15": "15営業日", "20": "20営業日", "30": "30営業日", "63": "63営業日(約3ヶ月)" };
 
+// 複数日「じわじわ型」下落の閾値(cron/check-prices.mjsと同一)。
+// 同じ下落幅でも単日急落型のほうが短期リバウンドの質が高く、数営業日かけた下落は
+// 同等のリバウンドを得るのにより深い累積が必要、というバックテスト結果に基づく。
+const CUM_WINDOW_DAYS = 3;
+const CUM_INDEX_LEVEL = -14;
+const CUM_THEME_LEVEL = -16;
+
+function cumulativeThreshold(entry) {
+  const levels = categoryDefaultLevels(entry);
+  if (!levels) return null; // レバレッジ/インバースは対象外
+  return levels === THEME_DEFAULT_LEVELS ? CUM_THEME_LEVEL : CUM_INDEX_LEVEL;
+}
+
+// 直近N営業日の累積下落率を計算(dailyPricesは日付降順)
+function cumulativeChangePct(dailyPrices, windowDays) {
+  if (!dailyPrices || dailyPrices.length < windowDays + 1) return null;
+  const latest = dailyPrices[0].close;
+  const base = dailyPrices[windowDays].close;
+  if (!base || base <= 0) return null;
+  return ((latest - base) / base) * 100;
+}
+
 function renderReboundStatsTable(entry) {
   const levels = categoryDefaultLevels(entry);
   if (!levels) return ""; // レバレッジ/インバースはバックテスト対象外
@@ -82,6 +104,7 @@ function renderReboundStatsTable(entry) {
     <div class="detail-section">
       <h3>参考: 過去10年バックテスト(${groupLabel})</h3>
       <div style="font-size:11px; opacity:0.7; margin-bottom:6px;">流動性フィルター後・分割等の異常値除外。到達日終値を基準にN営業日後の変化率を集計。投資助言ではありません。</div>
+      <div style="font-size:11px; opacity:0.7; margin-bottom:6px;">上表は<strong>単日急落型</strong>の成績です。数営業日かけてじわじわ下げた場合はリバウンドが弱く、同等の質を得るには${CUM_WINDOW_DAYS}営業日累計で<strong>${cumulativeThreshold(entry)}%</strong>程度の深さが必要という結果でした(この深さに達すると通知します)。</div>
       <div style="overflow-x:auto;">
         <table style="font-size:11px; border-collapse:collapse; min-width:100%;">
           <thead><tr><th style="padding:3px 6px;"></th>${headerCells}</tr></thead>
@@ -569,10 +592,21 @@ async function showDetail(code) {
   }
 
   const priceHistDiv = document.getElementById(`price-history-${code}`);
+  // 直近3営業日の累積下落率(じわじわ型の目安)
+  const cumEntry = catalogCache.find((c) => c.code === code);
+  const cumTh = cumulativeThreshold(cumEntry);
+  const cumPct = cumulativeChangePct(dailyPrices, CUM_WINDOW_DAYS);
+  let cumHtml = "";
+  if (cumTh != null && cumPct != null) {
+    const hit = cumPct <= cumTh;
+    cumHtml = `<div style="font-size:12px; margin-bottom:6px; padding:6px 8px; border-radius:4px; ${hit ? 'background:#d335; font-weight:600;' : 'opacity:0.75;'}">
+      直近${CUM_WINDOW_DAYS}営業日の累計: <span class="${pctClass(cumPct)}">${fmtPct(cumPct)}</span>（じわじわ型の目安 ${cumTh}%）${hit ? ' ← 到達' : ''}
+    </div>`;
+  }
   if (!dailyPrices || dailyPrices.length === 0) {
     priceHistDiv.innerHTML = '<div style="opacity:0.7;">価格履歴なし</div>';
   } else {
-    priceHistDiv.innerHTML = dailyPrices
+    priceHistDiv.innerHTML = cumHtml + dailyPrices
       .map((p) => {
         const bgColor = p.reached_level ? (p.reached_level <= -7 ? '#d335' : p.reached_level <= -5 ? '#f965' : '#ff95') : '';
         return `<div class="timeline-row" style="${bgColor ? `background:${bgColor}; padding:6px 8px; margin:2px 0; border-radius:4px;` : ''}">
