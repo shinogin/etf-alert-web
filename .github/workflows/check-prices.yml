@@ -3,6 +3,8 @@ name: ETF価格チェック
 on:
   schedule:
     - cron: "0,30 0-6 * * 1-5"
+    # 東証終値確定後の最終スキャン(15:35 JST)
+    - cron: "35 6 * * 1-5"
   workflow_dispatch: {}
 
 jobs:
@@ -19,7 +21,7 @@ jobs:
         working-directory: ./cron
         run: npm install
 
-      - name: 価格チェック実行
+      - name: 価格チェック実行(監視銘柄・通知判定)
         working-directory: ./cron
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -27,3 +29,15 @@ jobs:
           VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
           VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
         run: node check-prices.mjs
+
+      # カタログ画面の前日比は全銘柄ぶん必要なので、同じジョブ内で一括スキャンも行う。
+      # 別ワークフローのcronに分けていたところ、GitHub Actionsのスケジュール実行が
+      # 頻繁にスキップされ前日比が前日のまま止まる事象が起きたため、こちらに統合した。
+      # 過剰取得はスクリプト側の最小実行間隔(50分)で防ぐ。
+      - name: 全銘柄スキャン(カタログの前日比更新)
+        if: always()
+        working-directory: ./cron
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: node bulk-crash-scan.mjs
