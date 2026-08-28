@@ -3,7 +3,8 @@
 // etf_user_state に全件保存する(is_watched/is_favoriteは変更しない)。
 // これによりカタログ画面の「前日比で並び替え」が全銘柄で機能するようになる。
 // 加えて、前日比が閾値を超えて急落した銘柄はログ上でハイライトする。
-// 監視銘柄向けのcheck-prices.mjsとは別に、1日1回(市場終了後)だけ実行する想定。
+// check-prices.yml のジョブ末尾から毎回呼ばれるが、内部で最小実行間隔(MIN_INTERVAL_MINUTES)を
+// 見て間引くため、実際の全件取得はおおむね1時間おきになる。
 // 理由: Yahoo Financeの一括取得エンドポイント(v7/finance/spark)は1回あたり約20銘柄が上限のため、
 // 全件(400件超)を頻繁に叩くとレート制限やブロックのリスクが高まる。
 
@@ -23,6 +24,8 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 // 監視外の銘柄でもこのレベルの下落はログでハイライトする。
 const CRASH_THRESHOLD = -7;
 const BATCH_SIZE = 20;
+// 全銘柄スキャンの最小実行間隔(分)。これより短い間隔で呼ばれた場合はスキップする。
+const MIN_INTERVAL_MINUTES = 50;
 
 function isBusinessDayJST(date) {
   const jst = new Date(date.toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
@@ -83,6 +86,27 @@ async function main() {
   if (!isBusinessDayJST(now)) {
     console.log("非営業日のためスキップします");
     return;
+  }
+
+  // check-prices.yml から毎回呼ばれるが、Yahoo Financeへの負荷を避けるため実際の取得は
+  // MIN_INTERVAL_MINUTES 間隔に間引く。GitHub Actionsのスケジュールは大幅に遅延・スキップされる
+  // ことがあるので、cronの時刻ではなく「前回いつ更新したか」で判断する。
+  if (process.env.FORCE_SCAN !== "1") {
+    const { data: recent } = await supabase
+      .from("etf_user_state")
+      .select("last_updated_at")
+      .eq("is_watched", false)
+      .not("last_updated_at", "is", null)
+      .order("last_updated_at", { ascending: false })
+      .limit(1);
+    const lastAt = recent && recent[0] ? new Date(recent[0].last_updated_at) : null;
+    if (lastAt) {
+      const elapsedMin = (now.getTime() - lastAt.getTime()) / 60000;
+      if (elapsedMin < MIN_INTERVAL_MINUTES) {
+        console.log(`前回スキャンから${Math.round(elapsedMin)}分しか経っていないためスキップします`);
+        return;
+      }
+    }
   }
 
   const { data: catalog, error } = await supabase.from("etf_catalog").select("code");
