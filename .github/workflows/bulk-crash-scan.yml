@@ -1,11 +1,9 @@
 name: 大暴落一括検知
 
+# 定期実行は check-prices.yml のジョブ末尾に統合済み。
+# (スケジュール実行のスキップで前日比が更新されない事象があったため)
+# こちらは手動での全件強制スキャン用に残す。FORCE_SCAN=1 で最小実行間隔を無視する。
 on:
-  schedule:
-    # 平日 9:00-15:00 JST、1時間おき(監視外を含む全銘柄) = 00:00-06:00 UTC
-    - cron: "0 0-6 * * 1-5"
-    # 平日 15:35 JST (東証終値確定後) = 06:35 UTC。終値確定後の最終スキャン。
-    - cron: "35 6 * * 1-5"
   workflow_dispatch: {}
 
 jobs:
@@ -27,4 +25,5 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          FORCE_SCAN: "1"
         run: node bulk-crash-scan.mjs
