@@ -22,11 +22,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # GitHub Pagesはキャッシュヘッダを設定できず、ブラウザやホーム画面に追加したPWAが
+      # 古いjs/cssを掴み続ける。デプロイのたびに参照URLへ ?v=<コミットSHA> を付けて確実に最新版を読ませる。
+      # 書き換えるのは公開用の成果物だけで、リポジトリにはコミットしない。
+      - name: アセットにバージョンを付与
+        run: python3 tools/stamp-asset-version.py
+
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
           path: "web"
       - id: deployment
         uses: actions/deploy-pages@v4
-
-# trigger redeploy
