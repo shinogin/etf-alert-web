@@ -1,0 +1,70 @@
+name: 市場時間中の常駐監視
+
+# GitHub Actionsのschedule実行は遅延・スキップが頻発し、cronを分単位で当てにできない。
+# (実際に9:00/9:30 JSTの実行が丸ごと飛び、前日比が前営業日のまま止まる事象が続いた)
+# そこで「30分おきにcronで起動する」のをやめ、1回起動したら市場が閉じるまでジョブ内で
+# ループし続ける方式にする。起動が多少遅れても、その後は自前のsleepで確実に回る。
+on:
+  schedule:
+    # 08:50 JST 起動(寄り付き前)。1本のジョブで前場〜後場前半をカバーする。
+    - cron: "50 23 * * 0-4"
+    # 12:00 JST 起動。上が飛んだ場合の保険と、後場〜引け後の確定値取得を担当。
+    - cron: "0 3 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      until_jst:
+        description: "何時まで回すか(JST, HHMM)"
+        required: false
+        default: "1545"
+
+# 同時に走っても各スクリプト側の最小実行間隔で二重取得は防がれるため、待たせず並走を許可する。
+concurrency:
+  group: market-watch-${{ github.run_id }}
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    # 東証は9:00-15:30 JST。引け後の確定値取得まで含めて最大6時間で打ち切る。
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: 依存関係インストール
+        working-directory: ./cron
+        run: npm install
+
+      - name: 市場が閉じるまで30分おきに価格を取得
+        working-directory: ./cron
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          UNTIL_JST: ${{ github.event.inputs.until_jst || '1545' }}
+        run: |
+          set -u
+          # ジョブの実行上限(6時間)に達して強制終了されないよう、自前で終了時刻を管理する。
+          END_EPOCH=$(( $(date +%s) + 5*3600 + 40*60 ))
+          while true; do
+            NOW_JST=$(TZ=Asia/Tokyo date +%H%M)
+            echo "--- $(TZ=Asia/Tokyo date '+%F %H:%M:%S JST') ---"
+
+            # 監視銘柄の通知判定。失敗しても次の回に持ち越すだけなのでジョブは止めない。
+            node check-prices.mjs || echo "check-prices が失敗しました(次回に再試行します)"
+            # カタログ画面用の全銘柄前日比。スクリプト側の最小間隔(50分)で自動的に間引かれる。
+            node bulk-crash-scan.mjs || echo "bulk-crash-scan が失敗しました(次回に再試行します)"
+
+            if [ "$NOW_JST" -ge "$UNTIL_JST" ]; then
+              echo "終了時刻($UNTIL_JST JST)に達したため終了します"
+              break
+            fi
+            if [ "$(date +%s)" -ge "$END_EPOCH" ]; then
+              echo "ジョブの実行上限が近いため終了します"
+              break
+            fi
+            sleep 1800
+          done
