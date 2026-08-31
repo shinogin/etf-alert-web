@@ -1,9 +1,14 @@
 name: ETF価格チェック
 
-# 定期実行は market-watch.yml(常駐ループ方式)に移行済み。
-# GitHub Actionsのschedule実行はスキップ・遅延が頻発し、30分おきのcronが機能しなかったため。
-# こちらは手動での単発実行用に残す。
+# 主系統は market-watch.yml(常駐ループ方式)。こちらは従来どおりの単発実行を予備として残す。
+# 2026-08-26のGitHub Actions障害以降、schedule実行だけが着火しなくなる不具合が広く報告されており
+# (workflow_dispatchは正常)、ワークフローファイルへのコミットで再同期されるとされている。
+# schedule系統が復旧した場合に備えて二重化しておく。各スクリプトが最小実行間隔と
+# 当日通知済みレベルを見て重複を防ぐため、market-watchと同時に走っても副作用はない。
 on:
+  schedule:
+    - cron: "0,30 0-6 * * 1-5"
+    - cron: "35 6 * * 1-5"
   workflow_dispatch: {}
 
 jobs:
