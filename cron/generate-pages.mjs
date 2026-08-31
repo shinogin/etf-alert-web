@@ -615,6 +615,138 @@ ${affiliateBlockHtml()}
     })
   );
 
+  // ---------- 記事: ETFは何%下落したら買うべきか ----------
+  console.log("記事ページ生成中...");
+  const articleDate = new Date().toISOString().slice(0, 10);
+
+  // 記事内の「本日該当している銘柄」は毎営業日変わる。
+  // これにより記事が読み切りにならず、再訪の理由と更新シグナルの両方が生まれる。
+  const articleTargets = catalog
+    .map((e) => {
+      const levels = categoryDefaultLevels(e);
+      if (!levels) return null;
+      const st = stateByCode[e.code] || {};
+      const chg = st.last_change_pct;
+      if (typeof chg !== "number") return null;
+      const hit = levels.filter((l) => chg <= l).sort((a, b) => a - b)[0];
+      if (hit == null) return null;
+      return { e, chg, hit, group: levels === THEME_DEFAULT_LEVELS ? "テーマ系" : "広域インデックス系" };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.chg - b.chg)
+    .slice(0, 30);
+
+  const todayBlock = articleTargets.length
+    ? `<table>
+  <tr><th>銘柄</th><th>分類</th><th>前日比</th><th>到達</th></tr>
+${articleTargets
+  .map(
+    (t) =>
+      `  <tr><td><a href="${SITE_URL}/etf/${esc(t.e.code)}/">${esc(
+        t.e.name
+      )}</a><br/><span class="code">${esc(t.e.code)}</span></td><td>${t.group}</td><td class="pct-down">${pct(
+        t.chg,
+        2
+      )}</td><td>${t.hit}%</td></tr>`
+  )
+  .join("\n")}
+</table>`
+    : `<p style="font-size:14px;">本日、閾値に到達している銘柄はありません。下で説明するとおり、深い下落は年に数回しか起きません。待つことがこの手法の本体です。</p>`;
+
+  const articleBody = `
+<h1>ETFは何％下落したら買うべきか — 10年分の実データで検証した</h1>
+<p style="font-size:13px;opacity:0.7;">最終更新: ${articleDate}（このページの「本日の該当銘柄」は毎営業日に自動更新されます）</p>
+
+<p style="font-size:14px;">「安く買って高く売る」とはよく言われますが、では具体的に何％下がったら買えばいいのか。この問いに数字で答えるため、日本の主要ETF53銘柄について過去10年分の日次データを集計しました。</p>
+
+<h2>結論</h2>
+<p style="font-size:14px;">TOPIXや日経225のような広範な指数に連動するETFが<strong>1日で8％以上下落した後に買い、約3ヶ月保有した場合、過去10年で27回すべてがプラス</strong>で終わっていました。平均リターンは+24.1％です。</p>
+<p style="font-size:14px;">ただしこの数字だけを見るのは危険です。理由は後述します。</p>
+
+<h2>本日、閾値に到達している銘柄</h2>
+${todayBlock}
+
+<h2>検証の条件</h2>
+<table>
+  <tr><th>対象</th><td>日本上場ETFのうち純資産1,000億円以上・レバレッジ／インバース型を除く53銘柄</td></tr>
+  <tr><th>期間</th><td>過去10年（日次終値、株式分割は調整済み）</td></tr>
+  <tr><th>買うタイミング</th><td>前日比で閾値以上に下落した日の終値</td></tr>
+  <tr><th>保有期間</th><td>63営業日（約3ヶ月）</td></tr>
+  <tr><th>除外</th><td>1日で±30％を超える異常値（分割等の可能性）</td></tr>
+</table>
+<p style="font-size:14px;">ETFは値動きの性質で2つに分けています。TOPIX・日経225・S&amp;P500など広範な指数に連動するものを「広域インデックス系」、半導体・高配当・REITなど特定分野に絞ったものを「テーマ系」としました。両者は下落の頻度も深さも大きく違うため、同じ閾値で語ることができません。</p>
+
+<h2>閾値別の結果</h2>
+<h3>広域インデックス系</h3>
+<table>
+  <tr><th>下落率</th><th>回数</th><th>勝率</th><th>平均リターン</th></tr>
+  <tr><td>-3%</td><td>695回</td><td>83.7%</td><td class="pct-up">+11.0%</td></tr>
+  <tr><td>-5%</td><td>149回</td><td>96.6%</td><td class="pct-up">+18.0%</td></tr>
+  <tr><td>-8%</td><td>27回</td><td>100%</td><td class="pct-up">+24.1%</td></tr>
+</table>
+<h3>テーマ系</h3>
+<table>
+  <tr><th>下落率</th><th>回数</th><th>勝率</th><th>平均リターン</th></tr>
+  <tr><td>-3%</td><td>1,192回</td><td>69.0%</td><td class="pct-up">+5.9%</td></tr>
+  <tr><td>-7%</td><td>177回</td><td>68.9%</td><td class="pct-up">+9.9%</td></tr>
+  <tr><td>-10%</td><td>81回</td><td>70.4%</td><td class="pct-up">+10.6%</td></tr>
+</table>
+<p style="font-size:14px;">深く下げたときほど成績が良くなります。そしてテーマ系は、より深い下落を待たないと同じ質のリバウンドが得られません。</p>
+
+<h2>「いつ買っても勝てたのでは？」への回答</h2>
+<p style="font-size:14px;">ここが最も重要な点です。過去10年の日本株は上昇基調だったため、下落を待たず適当な日に買っても、3ヶ月後にはプラスになっていた可能性があります。それなら「下がったら買う」に意味はありません。</p>
+<p style="font-size:14px;">そこで、同じ期間・同じ銘柄で「毎日買った場合」を計算し、比較しました。</p>
+<table>
+  <tr><th>買い方</th><th>勝率</th><th>平均リターン</th></tr>
+  <tr><td>広域インデックス系を無条件に買う</td><td>69.7%</td><td>+4.2%</td></tr>
+  <tr><td>広域インデックス系を-8%下落時に買う</td><td>100%</td><td class="pct-up">+24.1%</td></tr>
+  <tr><td>テーマ系を無条件に買う</td><td>61.3%</td><td>+2.5%</td></tr>
+  <tr><td>テーマ系を-10%下落時に買う</td><td>70.4%</td><td class="pct-up">+10.6%</td></tr>
+</table>
+<p style="font-size:14px;">無条件でも勝率は約7割ありました。つまり<strong>「勝率83％」という数字の一部は、単に相場が上昇していたことの反映</strong>です。それでも下落時に買うほうが勝率で14〜30ポイント、平均リターンで7〜20ポイント上回りました。上昇相場を差し引いても、下落時に買う優位性は残っています。</p>
+
+<h2>保有期間を間違えると効果が出ない</h2>
+<p style="font-size:14px;">同じデータを20営業日（約1ヶ月）保有で計算し直すと、優位性はほとんど消えます。下落直後の数日から数週間は値動きが荒く、方向が定まりません。</p>
+<p style="font-size:14px;">この手法は、買ってから2〜3ヶ月待てる資金でないと機能しないということです。すぐに戻ることを期待して短期で手仕舞うと、最も成績の良い部分を取り逃します。</p>
+
+<h2>この手法の最大の難点</h2>
+<p style="font-size:14px;">-8％の下落は<strong>10年間で27回</strong>しかありません。53銘柄を合わせての回数なので、1銘柄あたりでは数年に一度です。</p>
+<p style="font-size:14px;">つまりこの手法の本体は、分析ではなく<strong>待つこと</strong>です。そして問題は、数年に一度の機会を捉えるために毎日相場を見続けるのは現実的でない、という点にあります。下落は予告なく起きます。</p>
+<p style="font-size:14px;">当サイトは、この問題を解決するために作りました。日本ETF全437銘柄を自動で監視し、閾値に到達した銘柄をプッシュ通知でお知らせします。無料で、登録も不要です。</p>
+<a class="cta" href="${SITE_URL}/">下落通知を受け取る（無料・登録不要）</a>
+
+<h2>注意点</h2>
+<ul style="font-size:14px;line-height:1.9;">
+  <li><strong>サンプル数が少ない</strong> — -8％の27回という数字は、統計的には十分とは言えません。勝率100％は「たまたま負けがなかった」可能性を含みます。</li>
+  <li><strong>検証期間が上昇相場に偏っている</strong> — 過去10年に長期の下落局面は含まれていません。リーマンショックのような局面では結果が変わります。</li>
+  <li><strong>分配金を含んでいません</strong> — 実際のリターンはこれより高くなります。</li>
+  <li><strong>信用取引を使う場合はリスクが変わります</strong> — 3ヶ月の保有中に含み損を抱える期間があり、レバレッジをかけていれば追証の可能性があります。</li>
+</ul>
+
+<h2>関連ページ</h2>
+<p style="font-size:14px;">当サイトでは各ETFの個別ページで、その銘柄自身が過去2年間に何回下落し、その後どう動いたかを掲載しています。</p>
+<a class="cta" href="${SITE_URL}/etf/">全437銘柄の下落統計を見る</a>
+<a class="cta" href="${SITE_URL}/jisseki/">運営者の実際の売買記録を見る</a>
+
+${affiliateBlockHtml()}
+
+<div class="note">
+  本記事は投資助言ではありません。過去のデータの集計結果であり、将来の成果を保証するものではありません。<br/>
+  投資判断はご自身の責任で行ってください。信用取引には元本超過損のリスクがあります。
+</div>
+`;
+  mkdirSync(`${OUT_ROOT}/report/etf-drop-threshold`, { recursive: true });
+  writeFileSync(
+    `${OUT_ROOT}/report/etf-drop-threshold/index.html`,
+    pageLayout({
+      title: "ETFは何％下落したら買うべきか｜10年分の実データで検証",
+      description:
+        "日本の主要ETF53銘柄・過去10年の日次データで「下落時に買う」を検証。広域インデックス系は-8%下落後3ヶ月で勝率100%・平均+24.1%。無条件に買った場合との比較も掲載。",
+      canonical: `${SITE_URL}/report/etf-drop-threshold/`,
+      bodyHtml: articleBody,
+    })
+  );
+
   // ---------- sitemap.xml ----------
   console.log("sitemap.xml生成中...");
   const today = new Date().toISOString().slice(0, 10);
@@ -623,6 +755,7 @@ ${affiliateBlockHtml()}
     { loc: `${SITE_URL}/etf/`, priority: "0.9", changefreq: "daily" },
     { loc: `${SITE_URL}/haito/`, priority: "0.9", changefreq: "weekly" },
     { loc: `${SITE_URL}/jisseki/`, priority: "0.7", changefreq: "weekly" },
+    { loc: `${SITE_URL}/report/etf-drop-threshold/`, priority: "0.9", changefreq: "daily" },
     ...sorted.map((e) => ({ loc: `${SITE_URL}/etf/${e.code}/`, priority: "0.6", changefreq: "daily" })),
   ];
   const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
