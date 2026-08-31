@@ -1,10 +1,9 @@
 name: ETF価格チェック
 
+# 定期実行は market-watch.yml(常駐ループ方式)に移行済み。
+# GitHub Actionsのschedule実行はスキップ・遅延が頻発し、30分おきのcronが機能しなかったため。
+# こちらは手動での単発実行用に残す。
 on:
-  schedule:
-    - cron: "0,30 0-6 * * 1-5"
-    # 東証終値確定後の最終スキャン(15:35 JST)
-    - cron: "35 6 * * 1-5"
   workflow_dispatch: {}
 
 jobs:
@@ -30,10 +29,6 @@ jobs:
           VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
         run: node check-prices.mjs
 
-      # カタログ画面の前日比は全銘柄ぶん必要なので、同じジョブ内で一括スキャンも行う。
-      # 別ワークフローのcronに分けていたところ、GitHub Actionsのスケジュール実行が
-      # 頻繁にスキップされ前日比が前日のまま止まる事象が起きたため、こちらに統合した。
-      # 過剰取得はスクリプト側の最小実行間隔(50分)で防ぐ。
       - name: 全銘柄スキャン(カタログの前日比更新)
         if: always()
         working-directory: ./cron
