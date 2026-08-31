@@ -2,14 +2,19 @@ name: 市場時間中の常駐監視
 
 # GitHub Actionsのschedule実行は遅延・スキップが頻発し、cronを分単位で当てにできない。
 # (実際に9:00/9:30 JSTの実行が丸ごと飛び、前日比が前営業日のまま止まる事象が続いた)
-# そこで「30分おきにcronで起動する」のをやめ、1回起動したら市場が閉じるまでジョブ内で
-# ループし続ける方式にする。起動が多少遅れても、その後は自前のsleepで確実に回る。
+# そこで「短い間隔でcron起動する」のをやめ、1回起動したら市場が閉じるまでジョブ内で
+# ループし続ける方式にする。起動さえできれば、その後は自前のsleepで確実に回る。
 on:
   schedule:
-    # 08:50 JST 起動(寄り付き前)。1本のジョブで前場〜後場前半をカバーする。
-    - cron: "50 23 * * 0-4"
-    # 12:00 JST 起動。上が飛んだ場合の保険と、後場〜引け後の確定値取得を担当。
-    - cron: "0 3 * * 1-5"
+    # 朝の起動はスキップされると1日分まるごと失うため、寄り付き前に4本仕掛けて保険とする。
+    # concurrencyで1本だけが走り、残りは待機→先行ジョブ終了後に即終了するので二重取得はしない。
+    # (UTC。日本時間との差で曜日が1つずれるため 0-4 = 月〜金 JST)
+    - cron: "40 23 * * 0-4"   # 08:40 JST
+    - cron: "48 23 * * 0-4"   # 08:48 JST
+    - cron: "56 23 * * 0-4"   # 08:56 JST
+    - cron: "5 0 * * 1-5"     # 09:05 JST
+    # 昼の保険。朝の4本がすべて飛んだ場合でも後場と引け後の確定値を取得できるようにする。
+    - cron: "0 3 * * 1-5"     # 12:00 JST
   workflow_dispatch:
     inputs:
       until_jst:
@@ -17,9 +22,12 @@ on:
         required: false
         default: "1545"
 
-# 同時に走っても各スクリプト側の最小実行間隔で二重取得は防がれるため、待たせず並走を許可する。
+# 同時に複数起動しても実際に走るのは1本だけにする。
+# cancel-in-progress: false なので走行中のジョブは止められず、後発は待機に回る。
+# 待機ジョブは先行ジョブの終了(15:45 JST)後に開始し、終了時刻を過ぎているため即座に終わる。
 concurrency:
-  group: market-watch-${{ github.run_id }}
+  group: market-watch
+  cancel-in-progress: false
 
 jobs:
   watch:
@@ -37,7 +45,7 @@ jobs:
         working-directory: ./cron
         run: npm install
 
-      - name: 市場が閉じるまで30分おきに価格を取得
+      - name: 市場が閉じるまで15分おきに価格を取得
         working-directory: ./cron
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -47,15 +55,15 @@ jobs:
           UNTIL_JST: ${{ github.event.inputs.until_jst || '1545' }}
         run: |
           set -u
-          # ジョブの実行上限(6時間)に達して強制終了されないよう、自前で終了時刻を管理する。
+          # ジョブの実行上限(6時間)で強制終了されないよう、自前で終了時刻を管理する。
           END_EPOCH=$(( $(date +%s) + 5*3600 + 40*60 ))
           while true; do
             NOW_JST=$(TZ=Asia/Tokyo date +%H%M)
             echo "--- $(TZ=Asia/Tokyo date '+%F %H:%M:%S JST') ---"
 
-            # 監視銘柄の通知判定。失敗しても次の回に持ち越すだけなのでジョブは止めない。
+            # 監視銘柄の通知判定(15分おき)。失敗しても次の回に持ち越すためジョブは止めない。
             node check-prices.mjs || echo "check-prices が失敗しました(次回に再試行します)"
-            # カタログ画面用の全銘柄前日比。スクリプト側の最小間隔(50分)で自動的に間引かれる。
+            # カタログ画面用の全銘柄前日比。スクリプト側の最小間隔(30分)で自動的に間引かれる。
             node bulk-crash-scan.mjs || echo "bulk-crash-scan が失敗しました(次回に再試行します)"
 
             if [ "$NOW_JST" -ge "$UNTIL_JST" ]; then
@@ -66,5 +74,5 @@ jobs:
               echo "ジョブの実行上限が近いため終了します"
               break
             fi
-            sleep 1800
+            sleep 900
           done
