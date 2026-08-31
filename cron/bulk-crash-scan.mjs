@@ -25,7 +25,9 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 const CRASH_THRESHOLD = -7;
 const BATCH_SIZE = 20;
 // 全銘柄スキャンの最小実行間隔(分)。これより短い間隔で呼ばれた場合はスキップする。
-const MIN_INTERVAL_MINUTES = 50;
+// 監視銘柄(16件)は15分おきに取得するが、全銘柄は437件=約22リクエストと重いため、
+// Yahoo Finance側のレート制限やブロックを避けて30分おきに間引く。
+const MIN_INTERVAL_MINUTES = Number(process.env.MIN_INTERVAL_MINUTES || 28);
 
 function isBusinessDayJST(date) {
   const jst = new Date(date.toLocaleString("en-US", { timeZone: "Asia/Tokyo" }));
