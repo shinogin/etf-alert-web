@@ -191,6 +191,13 @@ async function loadUserStates() {
   return data || [];
 }
 
+// 日本時間の「今日」をYYYY-MM-DD形式で返す。
+// toISOString()はUTC基準のため、00:00-09:00 JSTの間は前日の日付になってしまう。
+// Supabaseに保存している date 列は日本の営業日なので、必ずJSTで揃える。
+function jstDateString(base = new Date()) {
+  return new Date(base.getTime() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
 function fmtAum(aum) {
   if (!aum) return "—";
   const oku = aum / 100000000;
@@ -489,7 +496,7 @@ async function showDetail(code) {
   // 日次価格履歴(30日) の日付範囲を先に計算
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-  const cutoffDate = thirtyDaysAgo.toISOString().slice(0, 10);
+  const cutoffDate = jstDateString(thirtyDaysAgo);
 
   // ✅ 複数のSupabaseクエリを並行実行（Promise.all）
   const [plansResult, notifResult, priceResult] = await Promise.all([
@@ -673,7 +680,7 @@ async function updateUserState(code, updates) {
 
 // ---------- ホーム ----------
 async function loadHome() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = jstDateString();
 
   const { data: notifications } = await sb
     .from("notification_record")
@@ -867,7 +874,7 @@ document.getElementById("export-markdown-btn").addEventListener("click", async (
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `etf-export-${new Date().toISOString().slice(0, 10)}.md`;
+  a.download = `etf-export-${jstDateString()}.md`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
