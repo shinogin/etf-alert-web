@@ -438,7 +438,7 @@ ${relatedSection(e, catalog, stateByCode)}
 
 ${affiliateBlockHtml()}
 
-<p class="back"><a href="${SITE_URL}/etf/">← 全ETF一覧</a>　<a href="${SITE_URL}/haito/">分配金利回りランキング</a>　<a href="${SITE_URL}/jisseki/">実際の売買記録</a></p>
+<p class="back"><a href="${SITE_URL}/etf/">← 全ETF一覧</a>　<a href="${SITE_URL}/report/etf-drop-threshold/">何%下落したら買うべきか（検証記事）</a>　<a href="${SITE_URL}/haito/">分配金利回りランキング</a>　<a href="${SITE_URL}/jisseki/">実際の売買記録</a></p>
 `;
 
     const html = pageLayout({
@@ -498,6 +498,7 @@ ${todayDrops
 <h1>日本ETF 下落統計データベース（全${catalog.length}銘柄）</h1>
 <p style="font-size:14px;">日本の証券取引所に上場しているETF全${catalog.length}銘柄について、信託報酬・純資産・分配金・前日比を毎営業日に自動更新して掲載しています。各銘柄のページでは、その銘柄が過去2年間に前日比で大きく下落した回数と、下落した後に実際どう動いたかの集計も確認できます。</p>
 <p style="font-size:14px;">下落局面での買い付けを検討する際の判断材料として、ジャンル別に一覧できるようにまとめました。銘柄名をタップすると個別ページに移動します。</p>
+<a class="cta" href="${SITE_URL}/report/etf-drop-threshold/">ETFは何%下落したら買うべきか（10年分の検証結果）</a>
 <a class="cta" href="${SITE_URL}/haito/">分配金利回りランキングを見る</a>
 <a class="cta" href="${SITE_URL}/jisseki/">実際の売買記録・成績を見る</a>
 ${dropSection}
