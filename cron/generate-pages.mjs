@@ -188,7 +188,7 @@ function reboundStatsSection(entry) {
 <p style="font-size:12px;opacity:0.6;">n=サンプル数。分割等による異常値を除外し、流動性の低い銘柄を除いた上で集計しています。同一分類の銘柄群を対象とした統計であり、この銘柄個別の実績ではありません。過去の傾向は将来の成果を保証しません。</p>`;
 }
 
-function pageLayout({ title, description, canonical, bodyHtml }) {
+function pageLayout({ title, description, canonical, bodyHtml, ogType, jsonLd }) {
   return `<!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -198,6 +198,19 @@ function pageLayout({ title, description, canonical, bodyHtml }) {
 <meta name="description" content="${esc(description)}" />
 <link rel="canonical" href="${esc(canonical)}" />
 <meta name="robots" content="index,follow" />
+<meta property="og:type" content="${ogType || "website"}" />
+<meta property="og:title" content="${esc(title)}" />
+<meta property="og:description" content="${esc(description)}" />
+<meta property="og:url" content="${esc(canonical)}" />
+<meta property="og:site_name" content="ETF下落統計データベース" />
+<meta property="og:locale" content="ja_JP" />
+<meta name="twitter:card" content="summary" />
+<meta name="twitter:title" content="${esc(title)}" />
+<meta name="twitter:description" content="${esc(description)}" />${
+  jsonLd
+    ? `\n<script type="application/ld+json">${JSON.stringify(jsonLd)}</script>`
+    : ""
+}
 <style>
   :root { color-scheme: light dark; }
   body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 0; padding: 0 16px 60px; max-width: 720px; margin-inline: auto; line-height: 1.7; }
@@ -744,6 +757,19 @@ ${affiliateBlockHtml()}
       description:
         "日本の主要ETF53銘柄・過去10年の日次データで「下落時に買う」を検証。広域インデックス系は-8%下落後3ヶ月で勝率100%・平均+24.1%。無条件に買った場合との比較も掲載。",
       canonical: `${SITE_URL}/report/etf-drop-threshold/`,
+      ogType: "article",
+      jsonLd: {
+        "@context": "https://schema.org",
+        "@type": "Article",
+        headline: "ETFは何％下落したら買うべきか — 10年分の実データで検証した",
+        description: "日本の主要ETF53銘柄・過去10年の日次データで「下落時に買う」を検証した結果。",
+        datePublished: "2026-08-31",
+        dateModified: articleDate,
+        author: { "@type": "Person", name: "しのぎん" },
+        publisher: { "@type": "Organization", name: "ETF下落統計データベース" },
+        mainEntityOfPage: `${SITE_URL}/report/etf-drop-threshold/`,
+        inLanguage: "ja",
+      },
       bodyHtml: articleBody,
     })
   );
