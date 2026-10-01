@@ -2,3 +2,4 @@ User-agent: *
 Allow: /
 
 Sitemap: https://shinogin.github.io/etf-alert-web/sitemap.xml
+Sitemap: https://shinogin.github.io/etf-alert-web/sitemap-etf.xml
