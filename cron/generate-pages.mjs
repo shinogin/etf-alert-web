@@ -790,6 +790,13 @@ ${affiliateBlockHtml()}
 ${urls.map((u) => `  <url><loc>${u.loc}</loc><lastmod>${today}</lastmod><changefreq>${u.changefreq}</changefreq><priority>${u.priority}</priority></url>`).join("\n")}
 </urlset>`;
   writeFileSync(`${OUT_ROOT}/sitemap.xml`, sitemap);
+  // Search Consoleで sitemap.xml が8/25以降「取得できませんでした」から再試行されないため、
+  // 同内容を別名でも出力し新規サイトマップとして登録する。robots.txtにも両方を記載。
+  writeFileSync(`${OUT_ROOT}/sitemap-etf.xml`, sitemap);
+  writeFileSync(
+    `${OUT_ROOT}/robots.txt`,
+    `User-agent: *\nAllow: /\n\nSitemap: ${SITE_URL}/sitemap.xml\nSitemap: ${SITE_URL}/sitemap-etf.xml\n`
+  );
 
   console.log(`完了: ETFページ${catalog.length}件 + 一覧 + 実績ページ + sitemap.xml`);
 }
