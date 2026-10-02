@@ -529,47 +529,88 @@ ${categorySections}
   );
 
   // ---------- 高配当ランキングページ ----------
-  // 「高配当ETF ランキング」「(コード) 分配金」は検索需要が大きく、
-  // 実際に分配金関連のクエリからの流入が確認されているため専用ページを設ける。
+  // Search Consoleで実際に表示されているクエリは「etf 分配金 ランキング」
+  // 「etf 利回り ランキング」「etf 配当 利回り ランキング」。
+  // 総合順位だけだと特殊な仕組みの銘柄が上位を占めて比較しにくいため、
+  // 大型・ジャンル別・低コストの切り口でも並べる。
   console.log("高配当ランキングページ生成中...");
   const RANK_LIMIT = 50;
-  const ranked = catalog
+  const withYield = catalog
     .map((e) => ({ e, s: stateByCode[e.code] || {} }))
     .filter((x) => x.s.dividend_yield != null && x.s.dividend_yield > 0)
-    .sort((a, b) => b.s.dividend_yield - a.s.dividend_yield)
-    .slice(0, RANK_LIMIT);
+    .sort((a, b) => b.s.dividend_yield - a.s.dividend_yield);
+  const ranked = withYield.slice(0, RANK_LIMIT);
 
-  const rankRows = ranked
-    .map(
-      ({ e, s }, i) => `<tr>
-      <td>${i + 1}</td>
-      <td><a href="${SITE_URL}/etf/${e.code}/">${esc(e.name)}</a><br/><span class="code">${e.code}</span></td>
-      <td style="white-space:nowrap;"><strong>${s.dividend_yield}%</strong></td>
-      <td style="white-space:nowrap;">${s.annual_dividend}円</td>
-      <td style="white-space:nowrap;">${e.expense_ratio}%</td>
-    </tr>`
-    )
-    .join("\n");
+  const rankTable = (list) => `<div style="overflow-x:auto;">
+<table>
+  <tr><th style="width:auto;">順位</th><th style="width:auto;">銘柄</th><th style="width:auto;">利回り</th><th style="width:auto;">年間分配金</th><th style="width:auto;">信託報酬</th><th style="width:auto;">純資産</th></tr>
+${list
+  .map(
+    ({ e, s }, i) =>
+      `  <tr><td>${i + 1}</td><td><a href="${SITE_URL}/etf/${esc(e.code)}/">${esc(e.name)}</a><br/><span class="code">${esc(e.code)}</span></td><td style="white-space:nowrap;"><strong>${s.dividend_yield}%</strong></td><td style="white-space:nowrap;">${s.annual_dividend}円</td><td style="white-space:nowrap;">${e.expense_ratio}%</td><td style="white-space:nowrap;">${aumText(e.aum)}</td></tr>`
+  )
+  .join("\n")}
+</table>
+</div>`;
+
+  const yields = withYield.map((x) => x.s.dividend_yield).sort((a, b) => a - b);
+  const medianYield = yields.length ? yields[Math.floor(yields.length / 2)] : null;
+  const largeCap = withYield.filter((x) => (x.e.aum || 0) >= 1e11).slice(0, 20);
+  const lowCost = withYield.filter((x) => x.e.expense_ratio <= 0.2).slice(0, 20);
+  const RANK_CATEGORIES = ["国内株式", "外国株式", "REIT", "債券"];
+  const categoryBlocks = RANK_CATEGORIES.map((c) => {
+    const list = withYield.filter((x) => x.e.category === c);
+    if (!list.length) return "";
+    return `<h3>${esc(c)}（分配金実績のある${list.length}銘柄中の上位${Math.min(10, list.length)}）</h3>\n${rankTable(
+      list.slice(0, 10)
+    )}`;
+  }).join("\n");
 
   const rankBody = `
-<h1>日本ETF 分配金利回りランキング TOP${ranked.length}</h1>
-<p style="font-size:14px;">東証上場ETFを、直近1年間の分配金実績にもとづく利回り順に並べています。毎日自動更新。利回りは「直近1年の分配金合計 ÷ 現在価格」で算出した参考値です。</p>
-<div style="overflow-x:auto;">
-<table>
-  <tr><th style="width:auto;">順位</th><th style="width:auto;">銘柄</th><th style="width:auto;">利回り</th><th style="width:auto;">年間分配金</th><th style="width:auto;">信託報酬</th></tr>
-  ${rankRows}
-</table>
-</div>
-<p style="font-size:12px;opacity:0.6;">利回りが高い銘柄には、カバードコール型など特有の仕組みを持つものや、価格下落によって見かけ上の利回りが上昇しているものが含まれます。利回りの高さだけで優劣は判断できません。税金は考慮していません。本ページは投資助言ではありません。</p>
+<h1>ETF 分配金・配当利回りランキング TOP${ranked.length}（日本上場ETF）</h1>
+<p style="font-size:14px;">東京証券取引所に上場しているETFのうち、直近1年間に分配金の実績がある${withYield.length}銘柄を、利回りの高い順に並べています。毎営業日に自動更新しています。</p>
+<p style="font-size:14px;">利回りは「直近1年の分配金合計 ÷ 現在の価格」で計算した実績ベースの値です。${
+    medianYield != null ? `${withYield.length}銘柄の中央値は<strong>${medianYield}%</strong>で、これより高ければ相対的に高利回りと言えます。` : ""
+  }ETFでは「配当」ではなく「分配金」と呼びますが、意味はほぼ同じです。</p>
+<p style="font-size:13px;">目次: <a href="#all">総合</a>　<a href="#large">大型ETF</a>　<a href="#category">ジャンル別</a>　<a href="#lowcost">低コスト</a>　<a href="#caution">利回りを見るときの注意</a></p>
 
+<h2 id="all">総合ランキング TOP${ranked.length}</h2>
+${rankTable(ranked)}
+
+<h2 id="large">純資産1,000億円以上の大型ETFに絞ったランキング</h2>
+<p style="font-size:14px;">総合ランキングの上位は、規模が小さい銘柄や特殊な仕組みの銘柄が多くなります。売買のしやすさを重視するなら、純資産が大きい銘柄だけで比べるほうが実用的です。</p>
+${rankTable(largeCap)}
+
+<h2 id="category">ジャンル別ランキング</h2>
+<p style="font-size:14px;">株式・REIT・債券では利回りの水準も値動きの性質も違うため、同じジャンルの中で比べてください。</p>
+${categoryBlocks}
+
+<h2 id="lowcost">信託報酬0.2%以下の低コストETFに絞ったランキング</h2>
+<p style="font-size:14px;">信託報酬は保有している間ずっとかかる費用です。利回りが同程度なら、信託報酬が低い銘柄のほうが手元に残る金額は多くなります。</p>
+${rankTable(lowCost)}
+
+<h2 id="caution">利回りを見るときの注意</h2>
+<ul style="font-size:14px;line-height:1.9;">
+  <li><strong>価格が下がると利回りは上がって見える</strong> — 利回りは分配金を現在の価格で割った値なので、価格が大きく下落した銘柄は見かけ上の利回りが高くなります。</li>
+  <li><strong>カバードコール型は仕組みが違う</strong> — 上位に多いカバードコール型は、値上がり益の一部を手放す代わりに分配金を厚くする仕組みです。利回りの高さがそのまま有利さを意味しません。</li>
+  <li><strong>過去の実績であり、将来の分配金は変わる</strong> — 分配金は運用成績に応じて増減します。</li>
+  <li><strong>税金は考慮していません</strong> — 実際の受取額は税引き後の金額になります。</li>
+</ul>
+
+<h2>関連ページ</h2>
+<a class="cta" href="${SITE_URL}/report/etf-drop-threshold/">ETFは何%下落したら買うべきか（10年分の検証結果）</a>
 <a class="cta" href="${SITE_URL}/etf/">全${catalog.length}銘柄の一覧を見る</a>
+
+${affiliateBlockHtml()}
+
+<div class="note">本ページは投資助言ではありません。掲載している利回りは過去の実績にもとづく参考値で、将来の分配金や運用成果を保証するものではありません。</div>
 `;
   mkdirSync(`${OUT_ROOT}/haito`, { recursive: true });
   writeFileSync(
     `${OUT_ROOT}/haito/index.html`,
     pageLayout({
-      title: `日本ETF分配金利回りランキング TOP${ranked.length}（毎日自動更新）`,
-      description: `東証上場ETFを分配金利回り順に掲載。年間分配金・信託報酬もあわせて比較できます。毎日自動更新。`,
+      title: `ETF分配金・配当利回りランキング TOP${ranked.length}｜日本上場ETFを毎日更新`,
+      description: `日本上場ETFの分配金利回り（配当利回り）ランキング。総合TOP${ranked.length}に加え、大型ETF・ジャンル別（国内株式・外国株式・REIT・債券）・低コストETFの利回り順位を毎営業日更新。`,
       canonical: `${SITE_URL}/haito/`,
       bodyHtml: rankBody,
     })
