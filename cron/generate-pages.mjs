@@ -299,6 +299,55 @@ function ownDropStats(rows, threshold) {
   return out;
 }
 
+// 受益権分割・併合の履歴（上場来）。Yahoo Financeの分割イベントを使う。
+// 検索で「(コード) 分割」が実際に表示されているため各銘柄ページに載せる。
+async function fetchSplits(code) {
+  try {
+    const res = await fetch(
+      `https://query1.finance.yahoo.com/v8/finance/chart/${code}.T?range=max&interval=3mo&events=split`,
+      { headers: { "User-Agent": YF_UA } }
+    );
+    if (!res.ok) return null;
+    const r = (await res.json()).chart?.result?.[0];
+    if (!r) return null;
+    return Object.values(r.events?.splits || {})
+      .map((s) => ({
+        date: new Date(s.date * 1000).toISOString().slice(0, 10),
+        num: Number(s.numerator),
+        den: Number(s.denominator),
+      }))
+      .filter((s) => s.num > 0 && s.den > 0 && s.num !== s.den)
+      .sort((a, b) => (a.date < b.date ? 1 : -1));
+  } catch (e) {
+    return null;
+  }
+}
+
+function splitSection(entry, own) {
+  if (!own || own.splits == null) return "";
+  const name = esc(entry.name);
+  // Yahooの分割データは欠落があるため（例: 1489の2024年分割が未収録）、
+  // 「分割なし」とは断定せず、記録が確認できた銘柄だけ表示する。
+  if (!own.splits.length) return "";
+  const rows = own.splits
+    .map((s) => {
+      const isSplit = s.num > s.den;
+      const r = isSplit ? s.num / s.den : s.den / s.num;
+      const rText = Number.isInteger(r) ? r : r.toFixed(2);
+      return `  <tr><td>${s.date}</td><td>${isSplit ? "分割" : "併合"}</td><td>${
+        isSplit ? `1口 → ${rText}口` : `${rText}口 → 1口`
+      }</td></tr>`;
+    })
+    .join("\n");
+  return `<h2>受益権分割の履歴</h2>
+<p style="font-size:13px;">${name}（${esc(entry.code)}）では、次の受益権分割・併合が行われています。分割すると1口あたりの価格が下がり、少ない金額から買えるようになります。保有している口数は増えますが、資産の価値は変わりません。</p>
+<table>
+  <tr><th style="width:auto;">実施日</th><th>種類</th><th>比率</th></tr>
+${rows}
+</table>
+<p style="font-size:12px;opacity:0.6;">このページの下落統計は、分割の影響を除いた調整後の価格で計算しています。最新の情報は運用会社の発表をご確認ください。</p>`;
+}
+
 async function fetchAllOwnStats(catalog) {
   const results = {};
   let idx = 0, ok = 0, fail = 0;
@@ -311,7 +360,7 @@ async function fetchAllOwnStats(catalog) {
       if (!rows) { fail++; continue; }
       ok++;
       const threshold = e.is_leveraged || e.is_inverse ? -5 : -3;
-      results[e.code] = { threshold, stats: ownDropStats(rows, threshold) };
+      results[e.code] = { threshold, stats: ownDropStats(rows, threshold), splits: await fetchSplits(e.code) };
       await new Promise((r) => setTimeout(r, 60));
     }
   }
@@ -440,6 +489,8 @@ async function main() {
 </table>
 
 ${dividendSection(e, s)}
+
+${splitSection(e, ownStats[e.code])}
 
 ${ownHistorySection(e, ownStats[e.code])}
 
