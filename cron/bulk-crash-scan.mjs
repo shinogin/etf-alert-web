@@ -45,6 +45,10 @@ function chunk(arr, size) {
   return out;
 }
 
+function todayJSTString(date) {
+  return new Date(date.toLocaleString("en-US", { timeZone: "Asia/Tokyo" })).toISOString().slice(0, 10);
+}
+
 async function fetchSparkBatch(codes) {
   const symbols = codes.map((c) => `${c}.T`).join(",");
   const url = `https://query1.finance.yahoo.com/v7/finance/spark?symbols=${encodeURIComponent(
@@ -121,6 +125,7 @@ async function main() {
     return;
   }
 
+  const today = todayJSTString(now);
   const codes = catalog.map((c) => c.code);
   const batches = chunk(codes, BATCH_SIZE);
   console.log(`全${codes.length}銘柄を${batches.length}バッチでスキャンします`);
@@ -147,6 +152,19 @@ async function main() {
       console.warn("保存エラー:", upsertError.message);
     } else {
       updatedCount += rows.length;
+    }
+
+    // 日次履歴も全銘柄分を残す。check-prices.mjsは監視銘柄しか履歴を作らないため、
+    // 非監視銘柄は複数日にわたる累積下落(じわじわ型)を判定するデータが無かった。
+    // ここで全銘柄の終値を貯めることで、カタログ全体を対象に累積下落を集計できる。
+    const priceRows = quotes
+      .filter((q) => Math.abs(q.changePct) <= 30) // 分割等の異常値は履歴に入れない
+      .map((q) => ({ code: q.code, date: today, close: q.price, change_pct: q.changePct }));
+    if (priceRows.length > 0) {
+      const { error: priceError } = await supabase
+        .from("daily_price")
+        .upsert(priceRows, { onConflict: "code,date" });
+      if (priceError) console.warn("日次履歴の保存エラー:", priceError.message);
     }
 
     for (const q of quotes) {

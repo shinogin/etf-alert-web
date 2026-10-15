@@ -678,6 +678,76 @@ async function updateUserState(code, updates) {
   });
 });
 
+// ---------- じわじわ下げ(複数日累積) ----------
+// 単日の通知レベルでは拾えない「数営業日かけた下落」を一覧する。
+// 通知はcheck-prices.mjsが監視銘柄にしか出さないため、ここでカタログ全銘柄を集計して
+// 監視していない銘柄の累積下落も目視で追えるようにする。
+const SLOWDROP_ITEMS = 8;
+
+async function renderSlowDrops() {
+  const el = document.getElementById("slowdrop-list");
+  if (!el) return;
+
+  // 直近の営業日を含むよう余裕をもって2週間分を取得し、コードごとに新しい順へ並べ替える。
+  const since = new Date();
+  since.setDate(since.getDate() - 14);
+  const { data: rows } = await sb
+    .from("daily_price")
+    .select("code, date, close")
+    .gte("date", jstDateString(since))
+    .order("date", { ascending: false })
+    .limit(10000);
+
+  if (!rows || rows.length === 0) {
+    el.className = "empty";
+    el.textContent = "まだ集計に必要な履歴がありません";
+    return;
+  }
+
+  const byCode = {};
+  for (const r of rows) (byCode[r.code] ||= []).push(r);
+
+  const items = [];
+  for (const [code, list] of Object.entries(byCode)) {
+    // 日付降順。CUM_WINDOW_DAYS営業日前の終値と比べる(4件そろって初めて算出できる)
+    if (list.length < CUM_WINDOW_DAYS + 1) continue;
+    const latest = list[0].close;
+    const base = list[CUM_WINDOW_DAYS].close;
+    if (!base || base <= 0) continue;
+    const entry = catalogCache.find((c) => c.code === code);
+    const threshold = cumulativeThreshold(entry);
+    if (threshold == null) continue; // レバレッジ・インバースは対象外
+    items.push({ code, entry, pct: ((latest - base) / base) * 100, threshold });
+  }
+
+  if (items.length === 0) {
+    el.className = "empty";
+    el.textContent = `まだ集計に必要な履歴がありません(${CUM_WINDOW_DAYS + 1}営業日分の蓄積が必要です)`;
+    return;
+  }
+
+  items.sort((a, b) => a.pct - b.pct);
+  const top = items.slice(0, SLOWDROP_ITEMS);
+  const hitCount = items.filter((i) => i.pct <= i.threshold).length;
+
+  el.className = "";
+  el.innerHTML =
+    top
+      .map((i) => {
+        const hit = i.pct <= i.threshold;
+        return `<div class="row" style="cursor:pointer;" data-code="${i.code}">
+          <div><div class="name">${i.entry?.name || i.code}${hit ? ' <span style="font-size:10px; background:#d33; color:#fff; padding:1px 5px; border-radius:3px;">到達</span>' : ""}</div>
+          <div class="code">${i.code} ・ 目安 ${i.threshold}%</div></div>
+          <div class="${pctClass(i.pct)}">${fmtPct(i.pct)}</div></div>`;
+      })
+      .join("") +
+    `<div style="font-size:11px; opacity:0.7; padding:6px 2px;">集計対象 ${items.length}銘柄 / 目安到達 ${hitCount}銘柄。数日かけた下落は単日急落よりリバウンドが弱いため、目安は単日より深く設定しています。</div>`;
+
+  el.querySelectorAll(".row[data-code]").forEach((row) => {
+    row.addEventListener("click", () => showDetail(row.dataset.code));
+  });
+}
+
 // ---------- ホーム ----------
 async function loadHome() {
   const today = jstDateString();
@@ -717,6 +787,8 @@ async function loadHome() {
     .select("*")
     .eq("is_watched", true)
     .order("last_change_pct", { ascending: true });
+
+  await renderSlowDrops();
 
   const watchedList = document.getElementById("watched-list");
   if (!watched || watched.length === 0) {
