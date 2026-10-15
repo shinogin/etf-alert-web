@@ -61,6 +61,14 @@ const CUM_WINDOW_DAYS = 3;
 const CUM_INDEX_LEVEL = -14;
 const CUM_THEME_LEVEL = -16;
 
+// その銘柄がリバウンド統計のどちらの区分に属するか。カタログのスクリーニングでも使う。
+// レバレッジ・インバースは統計の対象外なのでnullを返す。
+function statGroup(entry) {
+  const levels = categoryDefaultLevels(entry);
+  if (!levels) return null;
+  return levels === THEME_DEFAULT_LEVELS ? "theme" : "index";
+}
+
 function cumulativeThreshold(entry) {
   const levels = categoryDefaultLevels(entry);
   if (!levels) return null; // レバレッジ/インバースは対象外
@@ -298,6 +306,7 @@ function applyCatalogView() {
   const q = document.getElementById("search-box").value.trim().toLowerCase();
   const category = document.getElementById("filter-category").value;
   const theme = document.getElementById("filter-theme").value;
+  const statGroupFilter = document.getElementById("filter-stat-group").value;
   const expenseSlider = parseInt(document.getElementById("filter-expense-max").value, 10);
   const expenseMax = expenseSlider >= 250 ? null : expenseSlider / 100;
   document.getElementById("expense-max-label").textContent =
@@ -327,6 +336,7 @@ function applyCatalogView() {
     }
     if (category && en.category !== category) return false;
     if (theme && !(en.themes || []).includes(theme)) return false;
+    if (statGroupFilter && statGroup(en) !== statGroupFilter) return false;
     if (expenseMax != null) {
       if (en.expense_ratio == null || en.expense_ratio > expenseMax) return false;
     }
@@ -641,7 +651,7 @@ async function updateUserState(code, updates) {
 ["search-box", "filter-expense-max"].forEach((id) => {
   document.getElementById(id).addEventListener("input", applyCatalogView);
 });
-["filter-category", "filter-theme", "filter-leveraged", "filter-inverse", "sort-select"].forEach((id) => {
+["filter-category", "filter-theme", "filter-stat-group", "filter-leveraged", "filter-inverse", "sort-select"].forEach((id) => {
   document.getElementById(id).addEventListener("change", applyCatalogView);
 });
 
