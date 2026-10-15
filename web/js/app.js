@@ -688,32 +688,54 @@ async function renderSlowDrops() {
   const el = document.getElementById("slowdrop-list");
   if (!el) return;
 
-  // 直近の営業日を含むよう余裕をもって2週間分を取得し、コードごとに新しい順へ並べ替える。
-  const since = new Date();
-  since.setDate(since.getDate() - 14);
-  const { data: rows } = await sb
-    .from("daily_price")
-    .select("code, date, close")
-    .gte("date", jstDateString(since))
-    .order("date", { ascending: false })
-    .limit(10000);
+  // Supabaseは1リクエスト1000行が上限。全銘柄×4営業日=約1750行は一度に取れないため、
+  // 先に対象の営業日を1日ずつ特定し、そのあと日付ごとに取得する(1日あたり最大437行)。
+  // 日付一覧をまとめて取ろうとすると1000行の上限に当たって2〜3日分しか拾えないので、
+  // 「直近日」→「それより前の最新日」と1件ずつ遡る。
+  const dates = [];
+  let cursor = null;
+  // 当日分は取得タイミングによって一部の銘柄しか入っていないことがあるため、
+  // 候補を1日多めに拾い、カバー率の低い先頭日は基準から外す。
+  for (let i = 0; i <= CUM_WINDOW_DAYS + 1; i++) {
+    let query = sb.from("daily_price").select("date").order("date", { ascending: false }).limit(1);
+    if (cursor) query = query.lt("date", cursor);
+    const { data } = await query;
+    if (!data || data.length === 0) break;
+    cursor = data[0].date;
+    dates.push(cursor);
+  }
 
-  if (!rows || rows.length === 0) {
+  if (dates.length < CUM_WINDOW_DAYS + 1) {
     el.className = "empty";
-    el.textContent = "まだ集計に必要な履歴がありません";
+    el.textContent = `まだ集計に必要な履歴がありません(${CUM_WINDOW_DAYS + 1}営業日分の蓄積が必要です)`;
     return;
   }
 
-  const byCode = {};
-  for (const r of rows) (byCode[r.code] ||= []).push(r);
+  const perDate = await Promise.all(
+    dates.map((d) => sb.from("daily_price").select("code, close").eq("date", d).limit(1000))
+  );
+  // 祝日や、全銘柄スキャンが走りきる前のタイミングでは、その日の行数が極端に少ないことがある。
+  // そうした日は窓の途中にも現れるので、カバー率の低い日は候補から丸ごと除外する。
+  const maxRows = Math.max(...perDate.map((p) => (p.data || []).length));
+  const usable = dates
+    .map((d, i) => ({ date: d, rows: perDate[i].data || [] }))
+    .filter((x) => x.rows.length >= maxRows * 0.5);
+
+  if (usable.length < CUM_WINDOW_DAYS + 1) {
+    el.className = "empty";
+    el.textContent = `まだ集計に必要な履歴がありません(${CUM_WINDOW_DAYS + 1}営業日分の蓄積が必要です)`;
+    return;
+  }
+
+  const latestDate = usable[0].date;
+  const baseDate = usable[CUM_WINDOW_DAYS].date;
+  const latestMap = Object.fromEntries(usable[0].rows.map((r) => [r.code, r.close]));
+  const baseMap = Object.fromEntries(usable[CUM_WINDOW_DAYS].rows.map((r) => [r.code, r.close]));
 
   const items = [];
-  for (const [code, list] of Object.entries(byCode)) {
-    // 日付降順。CUM_WINDOW_DAYS営業日前の終値と比べる(4件そろって初めて算出できる)
-    if (list.length < CUM_WINDOW_DAYS + 1) continue;
-    const latest = list[0].close;
-    const base = list[CUM_WINDOW_DAYS].close;
-    if (!base || base <= 0) continue;
+  for (const [code, latest] of Object.entries(latestMap)) {
+    const base = baseMap[code];
+    if (!base || base <= 0 || !latest) continue;
     const entry = catalogCache.find((c) => c.code === code);
     const threshold = cumulativeThreshold(entry);
     if (threshold == null) continue; // レバレッジ・インバースは対象外
@@ -722,7 +744,7 @@ async function renderSlowDrops() {
 
   if (items.length === 0) {
     el.className = "empty";
-    el.textContent = `まだ集計に必要な履歴がありません(${CUM_WINDOW_DAYS + 1}営業日分の蓄積が必要です)`;
+    el.textContent = "まだ集計に必要な履歴がありません";
     return;
   }
 
@@ -741,7 +763,7 @@ async function renderSlowDrops() {
           <div class="${pctClass(i.pct)}">${fmtPct(i.pct)}</div></div>`;
       })
       .join("") +
-    `<div style="font-size:11px; opacity:0.7; padding:6px 2px;">集計対象 ${items.length}銘柄 / 目安到達 ${hitCount}銘柄。数日かけた下落は単日急落よりリバウンドが弱いため、目安は単日より深く設定しています。</div>`;
+    `<div style="font-size:11px; opacity:0.7; padding:6px 2px;">${baseDate}→${latestDate} / 集計対象 ${items.length}銘柄・目安到達 ${hitCount}銘柄。数日かけた下落は単日急落よりリバウンドが弱いため、目安は単日より深く設定しています。</div>`;
 
   el.querySelectorAll(".row[data-code]").forEach((row) => {
     row.addEventListener("click", () => showDetail(row.dataset.code));
