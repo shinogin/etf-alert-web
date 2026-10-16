@@ -123,29 +123,66 @@ async function loadTrades() {
   html += '<div id="trade-form-wrap"></div>';
 
   // --- 保有中 ---
+  // 同じ銘柄を複数回に分けて買うことが多いため(じわじわ下げの買い増しなど)、
+  // 銘柄+建玉種別ごとにまとめ、平均取得単価と合計で表示する。
+  // 返済・編集は建玉単位で行う必要があるので、内訳は折りたたみで残す。
+  const openGroups = [];
+  const groupIndex = {};
+  open.forEach((t) => {
+    const key = `${t.code}/${t.position_type}`;
+    if (groupIndex[key] == null) {
+      groupIndex[key] = openGroups.length;
+      openGroups.push({ key, code: t.code, position_type: t.position_type, name: t.name, items: [] });
+    }
+    openGroups[groupIndex[key]].items.push(t);
+  });
+
   html += `<h2 style="font-size:16px;margin-top:20px;">保有中 (${open.length})</h2>`;
   if (open.length === 0) {
     html += '<div class="empty">保有中の建玉はありません</div>';
   } else {
-    open.forEach((t) => {
-      const cur = priceByCode[t.code]?.last_price;
-      const dir = t.position_type === "margin_short" ? -1 : 1;
-      const up = cur != null ? dir * (cur - t.entry_price) * t.quantity : null;
-      const upPct = cur != null ? (dir * (cur - t.entry_price) / t.entry_price) * 100 : null;
+    openGroups.forEach((g) => {
+      const cur = priceByCode[g.code]?.last_price;
+      const dir = g.position_type === "margin_short" ? -1 : 1;
+      const qty = g.items.reduce((a, t) => a + t.quantity, 0);
+      const cost = g.items.reduce((a, t) => a + t.entry_price * t.quantity, 0);
+      const avgPrice = qty > 0 ? cost / qty : 0;
+      const up = cur != null ? dir * (cur - avgPrice) * qty : null;
+      const upPct = cur != null && avgPrice > 0 ? (dir * (cur - avgPrice) / avgPrice) * 100 : null;
+      const multi = g.items.length > 1;
+      // 建玉が複数ある場合は最初の1回を建玉日として扱う
+      const firstDate = g.items.reduce((a, t) => (t.entry_date < a ? t.entry_date : a), g.items[0].entry_date);
+
       html += '<div class="card trade-card">';
-      html += `<div class="trade-head"><span class="name">${t.name || catalogName(t.code)}</span>
-               <span class="code">${t.code}</span></div>`;
-      html += `<div class="meta">${POSITION_LABELS[t.position_type] || t.position_type}
-               ${t.alert_level != null ? `／ ${t.alert_level}%アラート発` : ""}</div>`;
-      html += `<div class="trade-line">建玉 ${t.entry_date}　${t.entry_price.toLocaleString()}円 × ${t.quantity}株
-               <span class="meta">(${daysSince(t.entry_date)}日経過)</span></div>`;
+      html += `<div class="trade-head"><span class="name">${g.name || catalogName(g.code)}</span>
+               <span class="code">${g.code}</span></div>`;
+      html += `<div class="meta">${POSITION_LABELS[g.position_type] || g.position_type}${
+        multi ? `／${g.items.length}回に分けて建玉` : ""
+      }</div>`;
+      html += `<div class="trade-line">${multi ? "平均取得 " : "建玉 "}${Math.round(avgPrice).toLocaleString()}円 × ${qty}株
+               <span class="meta">(${multi ? "初回 " : ""}${firstDate} / ${daysSince(firstDate)}日経過)</span></div>`;
       html += `<div class="trade-line">現在 ${cur != null ? cur.toLocaleString() + "円" : "—"}
                　<span class="${pnlClass(up)}">${yen(up)}　${signPct(upPct)}</span></div>`;
-      if (t.memo) html += `<div class="meta">${t.memo}</div>`;
-      html += `<div style="display:flex;gap:8px;margin-top:8px;">`;
-      html += `<button class="toggle trade-close-btn" data-id="${t.id}" style="flex:1;">返済を記録</button>`;
-      html += `<button class="toggle trade-edit-btn" data-id="${t.id}" style="flex:1;">編集</button>`;
-      html += `</div>`;
+
+      if (multi) {
+        html += `<details class="trade-breakdown"><summary class="meta" style="cursor:pointer;padding:6px 0;">内訳 ${g.items.length}件を表示</summary>`;
+      }
+      g.items.forEach((t) => {
+        const tUp = cur != null ? dir * (cur - t.entry_price) * t.quantity : null;
+        const tUpPct = cur != null ? (dir * (cur - t.entry_price) / t.entry_price) * 100 : null;
+        html += `<div style="${multi ? "border-top:1px solid #8883;padding-top:8px;" : ""}margin-top:8px;">`;
+        if (multi) {
+          html += `<div class="trade-line" style="font-size:13px;">${t.entry_date}　${t.entry_price.toLocaleString()}円 × ${t.quantity}株
+                   　<span class="${pnlClass(tUp)}">${yen(tUp)}　${signPct(tUpPct)}</span></div>`;
+        }
+        if (t.alert_level != null) html += `<div class="meta">${t.alert_level}%アラート発</div>`;
+        if (t.memo) html += `<div class="meta">${t.memo}</div>`;
+        html += `<div style="display:flex;gap:8px;margin-top:6px;">`;
+        html += `<button class="toggle trade-close-btn" data-id="${t.id}" style="flex:1;">返済を記録</button>`;
+        html += `<button class="toggle trade-edit-btn" data-id="${t.id}" style="flex:1;">編集</button>`;
+        html += `</div></div>`;
+      });
+      if (multi) html += `</details>`;
       html += "</div>";
     });
   }
