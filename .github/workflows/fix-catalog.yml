@@ -1,0 +1,29 @@
+name: カタログ分類の修正
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "cron/fix-catalog-flags.mjs"
+  workflow_dispatch: {}
+
+jobs:
+  fix-catalog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: 依存関係インストール
+        working-directory: ./cron
+        run: npm install
+
+      - name: レバレッジ判定・ジャンルの修正
+        working-directory: ./cron
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: node fix-catalog-flags.mjs

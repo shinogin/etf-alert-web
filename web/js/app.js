@@ -75,6 +75,116 @@ function cumulativeThreshold(entry) {
   return levels === THEME_DEFAULT_LEVELS ? CUM_THEME_LEVEL : CUM_INDEX_LEVEL;
 }
 
+// ---------- 下落の中身チェック ----------
+// 2026-10 実施の全ETF10年バックテスト(336銘柄・売買代金1千万円以上)の結論:
+//  ・株式ETFでは「直前に上がったか」ではなく「20営業日の高値から何%下にいるか」で成績が分かれる。
+//    高値から-7%以上下: 63日後の勝率75〜78%・63日以内に+6%到達76〜85%
+//    高値から-7%未満(浅い): 勝率66%・+6%到達65% = ランダムな日に買うのと同程度
+//  ・株式2倍型は-7%以上の急落で優位性が大きいが、保有中の下げ幅も大きい(中央値-10%)。
+//  ・コモディティは下落時に買ってもランダム以下。下がる流れより上がる流れに乗る方が成績が良い。
+//  ・インバース型は長期で目減りする構造(ランダムな日でも63日後の勝率24%)。
+function dropProfile(entry) {
+  if (!entry) return "equity";
+  if (entry.is_inverse) return "inverse";
+  const text = `${entry.name || ""} ${entry.index_name || ""}`.normalize("NFKC");
+  const isCommodity =
+    entry.category === "コモディティ" || /金価格|金レバレッジ|原油|WTI|天然ガス|プラチナ|白金|銀価格|穀物|農産物/.test(text);
+  if (isCommodity) return "commodity";
+  if (entry.category === "債券") return "bond";
+  if (entry.category === "REIT") return "reit";
+  if (entry.is_leveraged) return "equity_lev";
+  return "equity";
+}
+
+const DROP_PROFILE_NOTES = {
+  equity: "",
+  equity_lev:
+    "株式2倍型:20日高値から-7%以上の急落では過去の成績が特に良い一方、保有中に一時-10%前後下げるのが普通です。買う金額は小さめに。",
+  commodity:
+    "コモディティ(金・原油など):下げたときに買っても、過去はランダムな日に買うより成績が悪めでした。下げ止まりより「上がる流れ」を確認してからの方が向いています。",
+  inverse: "インバース型:持っているだけで目減りしやすい構造です。下落時の買いには向きません。",
+  bond: "債券:値動きが小さく、下落後の戻りも小さめです。",
+  reit: "REIT:下落後の戻りのばらつきが大きい分類です。",
+};
+
+function renderDropQuality(entry, dailyPrices, code) {
+  const box = document.getElementById(`drop-quality-${code}`);
+  if (!box) return;
+  const head = "<h3>下落の中身チェック</h3>";
+  // dailyPricesは日付降順。終値が欠けた日は除く
+  // 祝日などに前日と同じ値で記録された行(前日比0%かつ終値が前の行と同じ)は営業日として数えない
+  const rows = (dailyPrices || []).filter(
+    (p, i, a) => p.close != null && !(p.change_pct === 0 && a[i + 1] && a[i + 1].close === p.close)
+  );
+  if (rows.length < 6) {
+    box.innerHTML = head + '<div style="font-size:12px; opacity:0.7;">価格データが足りないため判定できません</div>';
+    return;
+  }
+  const cur = rows[0].close;
+  const win = rows.slice(0, 21); // 当日を含む最大21営業日
+  const hi = Math.max(...win.map((p) => p.close));
+  const fromHigh = (cur / hi - 1) * 100;
+  const chg5 = (cur / rows[5].close - 1) * 100; // 5営業日前比(当日の下げを含む)
+  const pre5 = (rows[1].close / rows[Math.min(6, rows.length - 1)].close - 1) * 100; // 下げる前の5日間
+
+  // 判定(株式ETFの検証結果に基づく)
+  let label, color, desc;
+  if (fromHigh > -3) {
+    label = "高値圏(下落局面ではない)";
+    color = "#888";
+    desc = "直近1か月の高値近くにいます。";
+  } else if (fromHigh <= -7) {
+    label = "急落(過去に優位性あり)";
+    color = "#2a9d4b";
+    desc = "高値から大きく下げた状態です。過去10年、この水準で買うと63日以内に+6%へ届いた割合が約8割でした。";
+  } else if (fromHigh <= -5 && chg5 <= 0) {
+    label = "弱い";
+    color = "#d98b00";
+    desc = "下げてはいますが、深さは中途半端です。";
+  } else {
+    label = "上昇分の反落(優位性なし)";
+    color = "#c0392b";
+    desc =
+      pre5 >= 2
+        ? `下げる前の5日間で${fmtPct(pre5)}上がっていて、その分が戻っただけに近い状態です。過去はランダムな日に買うのと同程度の成績でした。`
+        : "高値からの下げが浅く、過去はランダムな日に買うのと同程度の成績でした。";
+  }
+
+  const profile = dropProfile(entry);
+  const note = DROP_PROFILE_NOTES[profile];
+  // コモディティ・インバースは株式の統計が当てはまらないため、急落でも「優位性あり」とは表示しない
+  if ((profile === "commodity" || profile === "inverse") && fromHigh <= -3) {
+    label = "下落中(下落買い向きでない分類)";
+    color = "#c0392b";
+    desc = "この分類は過去、下げたときに買っても有利になっていません。";
+  }
+  const recent = rows.slice(0, 6).reverse();
+  const strip = recent
+    .map(
+      (p) => `<div style="flex:1; text-align:center; min-width:0;">
+        <div style="font-size:10px; opacity:0.6;">${String(p.date).slice(5).replace("-", "/")}</div>
+        <div class="${pctClass(p.change_pct)}" style="font-size:12px;">${fmtPct(p.change_pct)}</div>
+      </div>`
+    )
+    .join("");
+
+  box.innerHTML = `${head}
+    <div style="display:inline-block; padding:3px 10px; border-radius:12px; background:${color}; color:#fff; font-size:13px; font-weight:bold;">${label}</div>
+    <div style="font-size:12px; margin-top:6px; line-height:1.6;">${desc}</div>
+    <div style="display:flex; gap:12px; font-size:13px; margin-top:8px;">
+      <div>20日高値から <span class="${pctClass(fromHigh)}">${fmtPct(fromHigh)}</span></div>
+      <div>5営業日前比 <span class="${pctClass(chg5)}">${fmtPct(chg5)}</span></div>
+    </div>
+    <div style="font-size:11px; opacity:0.7; margin-top:8px;">直近6営業日の前日比</div>
+    <div style="display:flex; gap:4px; margin-top:2px;">${strip}</div>
+    ${
+      profile !== "equity"
+        ? `<div style="font-size:12px; margin-top:8px; padding:6px 8px; border-left:3px solid ${profile === "equity_lev" ? "#d98b00" : "#c0392b"}; background:#8881;">${note}</div>`
+        : ""
+    }
+    <div style="font-size:10px; opacity:0.6; margin-top:6px;">判定は株式ETFの過去10年の統計に基づく目安です。将来を保証するものではありません。</div>`;
+}
+
 // 直近N営業日の累積下落率を計算(dailyPricesは日付降順)
 function cumulativeChangePct(dailyPrices, windowDays) {
   if (!dailyPrices || dailyPrices.length < windowDays + 1) return null;
@@ -417,6 +527,11 @@ async function showDetail(code) {
       </div>
     </div>
 
+    <div class="detail-section" id="drop-quality-${code}">
+      <h3>下落の中身チェック</h3>
+      <div style="font-size:12px; opacity:0.7;">読み込み中...</div>
+    </div>
+
     <div class="detail-section">
       <h3>監視・お気に入り</h3>
       <div style="display:flex; gap:8px;">
@@ -456,7 +571,7 @@ async function showDetail(code) {
     </div>
 
     <div class="detail-section">
-      <h3>日次価格履歴(30日)</h3>
+      <h3>日次価格履歴(約1か月)</h3>
       <div style="font-size:12px; max-height:300px; overflow-y:auto;">
         <div id="price-history-${code}"></div>
       </div>
@@ -503,9 +618,10 @@ async function showDetail(code) {
     }
   });
 
-  // 日次価格履歴(30日) の日付範囲を先に計算
+  // 日次価格履歴の日付範囲を先に計算
+  // 「下落の中身チェック」で20営業日の高値を見るため、約40日分(≒27営業日)取得する
   const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 40);
   const cutoffDate = jstDateString(thirtyDaysAgo);
 
   // ✅ 複数のSupabaseクエリを並行実行（Promise.all）
@@ -522,6 +638,8 @@ async function showDetail(code) {
   if (plansError) console.error("買付計画読み込みエラー:", plansError);
   if (notifError) console.error("通知履歴取得エラー:", notifError);
   if (priceError) console.error("価格履歴取得エラー:", priceError);
+
+  renderDropQuality(entry, dailyPrices, code);
 
   // 買付計画の表示
   const planDiv = document.getElementById(`plan-list-${code}`);
