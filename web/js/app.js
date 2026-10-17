@@ -41,8 +41,11 @@ const BROAD_INDEX_KEYWORDS = [
   "MSCI ACWI", "MSCI-KOKUSAI", "MSCIコクサイ", "MSCI コクサイ",
   "FTSE 100", "DAX", "CSI300", "MSCIエマージング", "MSCI エマージング",
 ];
+// 指数系/テーマ系の株式ETF向け既定値(リバウンド統計の区分にも使う)。
+// レバレッジ・インバース・コモディティは統計の対象外なのでnull。
 function categoryDefaultLevels(entry) {
   if (!entry || entry.is_leveraged || entry.is_inverse) return null;
+  if (dropProfile(entry) === "commodity") return null;
   const idx = entry.index_name || "";
   const isBroadIndex = BROAD_INDEX_KEYWORDS.some((kw) => idx.includes(kw));
   return isBroadIndex ? INDEX_DEFAULT_LEVELS : THEME_DEFAULT_LEVELS;
@@ -60,6 +63,15 @@ const REBOUND_HORIZON_LABELS = { "10": "10営業日", "15": "15営業日", "20":
 const CUM_WINDOW_DAYS = 3;
 const CUM_INDEX_LEVEL = -14;
 const CUM_THEME_LEVEL = -16;
+
+// 通知の既定レベル(cron/check-prices.mjs と同じ基準)。カスタム設定が空のときに使われる。
+//  コモディティ・インバース: 既定では通知しない / 株式2倍型: -7,-10 / その他: 指数系・テーマ系の既定値
+function alertDefaultLevels(entry) {
+  const p = dropProfile(entry);
+  if (p === "commodity" || p === "inverse") return [];
+  if (p === "equity_lev") return [-7, -10];
+  return categoryDefaultLevels(entry) || [-3, -5, -7, -10];
+}
 
 // その銘柄がリバウンド統計のどちらの区分に属するか。カタログのスクリーニングでも使う。
 // レバレッジ・インバースは統計の対象外なのでnullを返す。
@@ -547,7 +559,11 @@ async function showDetail(code) {
           <input type="text" id="custom-levels-${code}" value="${(state.custom_alert_levels || []).join(',')}" placeholder="例: -2,-3,-5,-7" style="width:200px; padding:4px; border:1px solid #8886; border-radius:4px;" />
           <button id="save-custom-levels-${code}" class="btn-primary" style="margin-left:8px;">保存</button>
         </div>
-        <div style="font-size:11px; opacity:0.7; margin-top:4px;">空の場合は既定値(${(categoryDefaultLevels(entry) || [-3, -5, -7, -10]).join(', ')}%)を使用</div>
+        <div style="font-size:11px; opacity:0.7; margin-top:4px;">${
+          alertDefaultLevels(entry).length
+            ? `空の場合は既定値(${alertDefaultLevels(entry).join(", ")}%)を使用`
+            : "空の場合は通知しません(この分類は下落時の買いに優位性がないため)。通知したい場合はレベルを入力してください"
+        }</div>
       </div>
     </div>
 

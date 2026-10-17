@@ -92,10 +92,25 @@ const BROAD_INDEX_KEYWORDS = [
   "FTSE 100", "DAX", "CSI300", "MSCIエマージング", "MSCI エマージング",
 ];
 
-// レバレッジ/インバースはボラティリティ特性が別物なので、バックテスト対象外(=カテゴリ既定値なし)。
-// この場合はグローバル既定値(app_settings.default_alert_levels)にフォールバックする。
+// 2026-10 の全ETF10年バックテストに基づく分類別の既定値:
+//  ・コモディティ / インバース型: 下落時に買っても優位性がないため、既定では通知しない(空配列)。
+//  ・株式2倍型: -7%以上の急落で優位性が大きいので、深い下げだけ通知する。
+//  ・その他: 従来どおり指数系/テーマ系の既定値。
+// 個別にカスタムレベルを設定した銘柄は、そちらが常に優先される。
+const LEVERAGED_EQUITY_LEVELS = [-7, -10];
+const NO_ALERT_LEVELS = [];
+const COMMODITY_PATTERN = /金価格|金レバレッジ|原油|WTI|天然ガス|プラチナ|白金|銀価格|穀物|農産物/;
+
+function isCommodity(catalogEntry) {
+  if (!catalogEntry) return false;
+  const text = `${catalogEntry.name || ""} ${catalogEntry.index_name || ""}`.normalize("NFKC");
+  return catalogEntry.category === "コモディティ" || COMMODITY_PATTERN.test(text);
+}
+
 function categoryDefaultLevels(catalogEntry) {
-  if (!catalogEntry || catalogEntry.is_leveraged || catalogEntry.is_inverse) return null;
+  if (!catalogEntry) return null;
+  if (catalogEntry.is_inverse || isCommodity(catalogEntry)) return NO_ALERT_LEVELS;
+  if (catalogEntry.is_leveraged) return LEVERAGED_EQUITY_LEVELS;
   const indexName = catalogEntry.index_name || "";
   const isBroadIndex = BROAD_INDEX_KEYWORDS.some((kw) => indexName.includes(kw));
   return isBroadIndex ? INDEX_DEFAULT_LEVELS : THEME_DEFAULT_LEVELS;
@@ -117,7 +132,8 @@ const CUM_THEME_LEVEL = -16;
 
 function cumulativeThreshold(catalogEntry) {
   const catLevels = categoryDefaultLevels(catalogEntry);
-  if (catLevels == null) return null; // レバレッジ/インバースは対象外
+  // レバレッジ/インバース/コモディティは累積下落の統計対象外
+  if (catLevels !== THEME_DEFAULT_LEVELS && catLevels !== INDEX_DEFAULT_LEVELS) return null;
   return catLevels === THEME_DEFAULT_LEVELS ? CUM_THEME_LEVEL : CUM_INDEX_LEVEL;
 }
 
@@ -135,7 +151,7 @@ async function main() {
 
   const { data: watched, error } = await supabase
     .from("etf_user_state")
-    .select("*, purchase_plan_item(*), etf_catalog(index_name,is_leveraged,is_inverse)")
+    .select("*, purchase_plan_item(*), etf_catalog(name,index_name,category,is_leveraged,is_inverse)")
     .eq("is_watched", true);
 
   if (error) {
@@ -227,7 +243,9 @@ async function main() {
 
 
       const catLevels = categoryDefaultLevels(state.etf_catalog);
-      const rebGroup = catLevels == null ? null : catLevels === THEME_DEFAULT_LEVELS ? "theme" : "index";
+      // 統計は指数系/テーマ系の株式ETFのみ(レバレッジ等には当てはまらないので出さない)
+      const rebGroup =
+        catLevels === THEME_DEFAULT_LEVELS ? "theme" : catLevels === INDEX_DEFAULT_LEVELS ? "index" : null;
       const st = rebGroup ? REBOUND_MATRIX[rebGroup]?.[String(reached)]?.["10"] : null;
       const statText = st
         ? `\n参考: 過去10年、このレベル後10営業日の勝率${st.win}%・平均${st.avg}%・中央値${st.med}%(詳細はアプリで確認)`
