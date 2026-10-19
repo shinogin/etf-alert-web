@@ -109,11 +109,14 @@ async function loadTrades() {
   html += '<div class="card trade-summary">';
   html += "<h3>成績サマリー</h3>";
   html += '<div class="stat-grid">';
+  // 決済分の%を単純平均した「平均リターン」は、金額の大小も保有中の含み損も反映しないため出さない。
+  // 代わりに確定損益と含み損益を足した「合計損益」を先頭に置き、実際に増えた(減った)金額で見る。
+  const total = (st.total_pnl ?? 0) + unrealized;
+  html += statCell("合計損益(確定+含み)", yen(total), pnlClass(total));
   html += statCell("確定損益", yen(st.total_pnl), pnlClass(st.total_pnl));
   html += statCell("含み損益", yen(unrealized), pnlClass(unrealized));
-  html += statCell("勝率", st.win_rate_pct != null ? st.win_rate_pct + "%" : "—");
+  html += statCell("勝率(決済分)", st.win_rate_pct != null ? st.win_rate_pct + "%" : "—");
   html += statCell("決済回数", (st.closed_trades ?? 0) + "回");
-  html += statCell("平均リターン", signPct(st.avg_return_pct), pnlClass(st.avg_return_pct));
   html += statCell("平均保有", st.avg_holding_days != null ? st.avg_holding_days + "日" : "—");
   html += "</div></div>";
 
