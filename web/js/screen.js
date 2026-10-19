@@ -32,6 +32,20 @@ const SCREEN_TIERS = [
 ];
 const SCREEN_TIER_BY_KEY = Object.fromEntries(SCREEN_TIERS.map((t) => [t.key, t]));
 
+// 株式2倍型の段階別成績(同じバックテスト・2倍型12銘柄)。値動きが大きいので+6%には届きやすく、
+// 途中の下げも大きい(どの段階でも下位1割は-28〜-33%)。
+const LEV_TIER_INFO = {
+  strong: { reach: 96, win: 82, med: 11.2, desc: "2倍型: 高値から-10%以上 かつ 市場全体も大きく下げている" },
+  mid: { reach: 82, win: 76, med: 8.3, desc: "2倍型: 高値から-10%以上(または-7%以上で市場全体も下げている)" },
+  weak: { reach: 80, win: 63, med: 5.1, desc: "2倍型: 高値から-7〜-10%" },
+  none: { reach: 69, win: 60, med: 4.3, desc: "2倍型: 高値からの下げが-7%未満" },
+};
+// 銘柄の分類に合わせた段階情報(2倍型は2倍型の成績を使う)
+function tierInfo(tierKey, profile) {
+  const t = SCREEN_TIER_BY_KEY[tierKey];
+  return profile === "equity_lev" && LEV_TIER_INFO[tierKey] ? { ...t, ...LEV_TIER_INFO[tierKey] } : t;
+}
+
 // 市場全体の下げ度合い = 株式ETF(売買代金1千万円以上)のうち、20日高値から-10%以下にいる割合(%)
 function breadthLabel(br) {
   if (br == null) return "—";
@@ -157,8 +171,8 @@ async function renderScreen(force = false) {
   let html = `
     <div class="card">
       <div style="font-size:12px; opacity:0.7;">市場全体の状態(${data.asOf || "—"}時点)</div>
-      <div style="display:flex; align-items:baseline; gap:10px; margin-top:4px;">
-        <span style="font-size:20px; font-weight:700; color:${brColor};">${breadthLabel(br)}</span>
+      <div style="display:flex; flex-wrap:wrap; align-items:baseline; column-gap:10px; margin-top:4px;">
+        <span style="font-size:20px; font-weight:700; white-space:nowrap; color:${brColor};">${breadthLabel(br)}</span>
         <span style="font-size:13px;">高値から-10%以下の株式ETF: <strong>${br != null ? br.toFixed(1) + "%" : "—"}</strong>(${data.eqCount}銘柄中)</span>
       </div>
       <div style="font-size:11px; opacity:0.7; margin-top:6px; line-height:1.6;">
@@ -212,7 +226,8 @@ async function renderScreen(force = false) {
           .join("")}
       </table>
       <div style="font-size:10px; opacity:0.6; margin-top:6px; line-height:1.6;">
-        「+6%到達」は買った日から63営業日以内に一度でも+6%を付けた割合。株式2倍型は値動きが大きく、保有中に一時-10%前後下げるのが普通です。
+        「+6%到達」は買った日から63営業日以内に一度でも+6%を付けた割合。
+        株式2倍型は別集計で、強96%・中82%・弱80%・なし69%(63日後に利益は82/76/63/60%)。値動きが大きく、保有中に一時-10%前後下げるのが普通です。
         「なし」でも利益になる割合が高いのは、この10年がおおむね上昇相場だったためです。将来の成績を保証するものではありません。
       </div>
     </div>`;

@@ -149,7 +149,7 @@ async function renderDropQuality(entry, dailyPrices, code) {
   } catch (e) {
     console.error("市場全体の集計に失敗:", e);
   }
-  const tier = SCREEN_TIER_BY_KEY[classifyTier(profile, fromHigh, breadth)];
+  const tier = tierInfo(classifyTier(profile, fromHigh, breadth), profile);
   const label = tier.key === "none" && fromHigh > -3 ? "なし(高値圏)" : `優位性: ${tier.label}`;
   const color = tier.color;
   let desc = tier.desc + "。";
