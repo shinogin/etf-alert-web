@@ -4,6 +4,11 @@ on:
   schedule:
     # 平日 15:50 JST (価格一括取得 15:35 の後) = 06:50 UTC
     - cron: "50 6 * * 1-5"
+  # 生成スクリプト自体を直したときは、翌営業日を待たずにすぐ公開ページへ反映する
+  push:
+    branches: [main]
+    paths:
+      - "cron/generate-pages.mjs"
   workflow_dispatch: {}
 
 permissions:

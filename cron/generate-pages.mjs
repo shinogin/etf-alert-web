@@ -684,17 +684,61 @@ ${affiliateBlockHtml()}
     })
     .join("");
 
+  // 保有中の含み損益(直近価格ベース)。決済分の%を単純平均した「平均リターン」は
+  // 金額差も含み損も反映せず実態とずれるため、確定+含みの合計損益で成績を示す。
+  const priceOf = Object.fromEntries(states.map((s) => [s.code, s.last_price]));
+  const todayJst = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+  const openGroups = {};
+  openTrades.forEach((t) => {
+    const k = `${t.code}/${t.position_type}`;
+    (openGroups[k] ||= { code: t.code, name: t.name, type: t.position_type, qty: 0, cost: 0, first: t.entry_date });
+    const g = openGroups[k];
+    g.qty += t.quantity;
+    g.cost += t.entry_price * t.quantity;
+    if (t.entry_date < g.first) g.first = t.entry_date;
+  });
+  let unrealized = 0;
+  const openRows = Object.values(openGroups)
+    .map((g) => {
+      const cur = priceOf[g.code];
+      const avg = g.cost / g.qty;
+      const dir = g.type === "margin_short" ? -1 : 1;
+      const up = cur != null ? dir * (cur - avg) * g.qty : null;
+      const upPct = cur != null ? (dir * (cur - avg) / avg) * 100 : null;
+      if (up != null) unrealized += up;
+      const days = Math.round((new Date(todayJst) - new Date(g.first)) / 86400000);
+      const cls = upPct > 0 ? "pct-up" : upPct < 0 ? "pct-down" : "";
+      return { upPct, html: `<tr>
+        <td>${esc(g.code)} ${esc(g.name || "")}</td>
+        <td>${g.first}〜</td>
+        <td>${days}日</td>
+        <td class="${cls}">${upPct != null ? pct(upPct, 1) : "—"}</td>
+      </tr>` };
+    })
+    .sort((a, b) => (a.upPct ?? 0) - (b.upPct ?? 0))
+    .map((r) => r.html)
+    .join("");
+  const totalPnl = (stats.total_pnl ?? 0) + unrealized;
+  const pnlCls = (v) => (v > 0 ? "pct-up" : v < 0 ? "pct-down" : "");
+
   const jissekiBody = `
 <h1>実際の売買記録・成績</h1>
 <p style="font-size:14px;">このアプリの下落通知をもとに、運営者自身が実際に行った信用取引の記録です。全件をありのまま公開しています。</p>
 
-<h2>サマリー（決済済み ${stats.closed_trades ?? 0}件）</h2>
+<h2>サマリー</h2>
 <table>
-  <tr><th>勝率</th><td>${stats.win_rate_pct != null ? stats.win_rate_pct + "%" : "データなし"}</td></tr>
-  <tr><th>確定損益合計</th><td class="${stats.total_pnl > 0 ? "pct-up" : stats.total_pnl < 0 ? "pct-down" : ""}">${yen(stats.total_pnl)}</td></tr>
-  <tr><th>平均リターン</th><td>${pct(stats.avg_return_pct, 2)}</td></tr>
-  <tr><th>平均保有日数</th><td>${stats.avg_holding_days != null ? stats.avg_holding_days + "日" : "—"}</td></tr>
-  <tr><th>保有中</th><td>${openTrades.length}件</td></tr>
+  <tr><th>合計損益（確定＋含み）</th><td class="${pnlCls(totalPnl)}"><strong>${yen(totalPnl)}</strong></td></tr>
+  <tr><th>確定損益（決済済み ${stats.closed_trades ?? 0}件）</th><td class="${pnlCls(stats.total_pnl)}">${yen(stats.total_pnl)}</td></tr>
+  <tr><th>含み損益（保有中 ${Object.keys(openGroups).length}銘柄）</th><td class="${pnlCls(unrealized)}">${yen(Math.round(unrealized))}</td></tr>
+  <tr><th>勝率（決済分のみ）</th><td>${stats.win_rate_pct != null ? stats.win_rate_pct + "%" : "データなし"}</td></tr>
+  <tr><th>平均保有日数（決済分）</th><td>${stats.avg_holding_days != null ? stats.avg_holding_days + "日" : "—"}</td></tr>
+</table>
+<p style="font-size:12px;opacity:0.75;">勝率は決済した取引だけの数字です。含み損を抱えたまま保有している銘柄は含まれないため、成績は合計損益で見るのが実態に近くなります。含み損益は直近の価格で計算しています。</p>
+
+<h2>保有中の銘柄</h2>
+<table>
+  <tr><th>銘柄</th><th>建玉日</th><th>経過</th><th>含み損益</th></tr>
+  ${openRows || '<tr><td colspan="4">保有中の銘柄はありません</td></tr>'}
 </table>
 
 <h2>決済済み取引の一覧</h2>
