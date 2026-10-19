@@ -119,7 +119,7 @@ const DROP_PROFILE_NOTES = {
   reit: "REIT:下落後の戻りのばらつきが大きい分類です。",
 };
 
-function renderDropQuality(entry, dailyPrices, code) {
+async function renderDropQuality(entry, dailyPrices, code) {
   const box = document.getElementById(`drop-quality-${code}`);
   if (!box) return;
   const head = "<h3>下落の中身チェック</h3>";
@@ -139,37 +139,23 @@ function renderDropQuality(entry, dailyPrices, code) {
   const chg5 = (cur / rows[5].close - 1) * 100; // 5営業日前比(当日の下げを含む)
   const pre5 = (rows[1].close / rows[Math.min(6, rows.length - 1)].close - 1) * 100; // 下げる前の5日間
 
-  // 判定(株式ETFの検証結果に基づく)
-  let label, color, desc;
-  if (fromHigh > -3) {
-    label = "高値圏(下落局面ではない)";
-    color = "#888";
-    desc = "直近1か月の高値近くにいます。";
-  } else if (fromHigh <= -7) {
-    label = "急落(過去に優位性あり)";
-    color = "#2a9d4b";
-    desc = "高値から大きく下げた状態です。過去10年、この水準で買うと63日以内に+6%へ届いた割合が約8割でした。";
-  } else if (fromHigh <= -5 && chg5 <= 0) {
-    label = "弱い";
-    color = "#d98b00";
-    desc = "下げてはいますが、深さは中途半端です。";
-  } else {
-    label = "上昇分の反落(優位性なし)";
-    color = "#c0392b";
-    desc =
-      pre5 >= 2
-        ? `下げる前の5日間で${fmtPct(pre5)}上がっていて、その分が戻っただけに近い状態です。過去はランダムな日に買うのと同程度の成績でした。`
-        : "高値からの下げが浅く、過去はランダムな日に買うのと同程度の成績でした。";
-  }
-
+  // 判定はスクリーニングタブと同じ段階(20日高値比 × 市場全体の下げ度合い)。
+  // 市場全体の値は全銘柄の集計が必要なので、スクリーニングと共通のキャッシュを使う。
   const profile = dropProfile(entry);
   const note = DROP_PROFILE_NOTES[profile];
-  // コモディティ・インバースは株式の統計が当てはまらないため、急落でも「優位性あり」とは表示しない
-  if ((profile === "commodity" || profile === "inverse") && fromHigh <= -3) {
-    label = "下落中(下落買い向きでない分類)";
-    color = "#c0392b";
-    desc = "この分類は過去、下げたときに買っても有利になっていません。";
+  let breadth = null;
+  try {
+    breadth = (await loadScreenData()).breadth;
+  } catch (e) {
+    console.error("市場全体の集計に失敗:", e);
   }
+  const tier = SCREEN_TIER_BY_KEY[classifyTier(profile, fromHigh, breadth)];
+  const label = tier.key === "none" && fromHigh > -3 ? "なし(高値圏)" : `優位性: ${tier.label}`;
+  const color = tier.color;
+  let desc = tier.desc + "。";
+  if (tier.reach != null) desc += `過去10年、同じ段階で買うと63日以内に+6%へ届いた割合は${tier.reach}%、63日後に利益は${tier.win}%でした。`;
+  if (tier.key === "none" && pre5 >= 2) desc += `下げる前の5日間で${fmtPct(pre5)}上がっていて、その分が戻っただけに近い状態です。`;
+  const brLine = `市場全体: ${breadthLabel(breadth)}(高値から-10%以下の株式ETF ${breadth != null ? breadth.toFixed(1) + "%" : "—"})`;
   const recent = rows.slice(0, 6).reverse();
   const strip = recent
     .map(
@@ -183,6 +169,7 @@ function renderDropQuality(entry, dailyPrices, code) {
   box.innerHTML = `${head}
     <div style="display:inline-block; padding:3px 10px; border-radius:12px; background:${color}; color:#fff; font-size:13px; font-weight:bold;">${label}</div>
     <div style="font-size:12px; margin-top:6px; line-height:1.6;">${desc}</div>
+    <div style="font-size:12px; margin-top:4px; opacity:0.8;">${brLine}</div>
     <div style="display:flex; gap:12px; font-size:13px; margin-top:8px;">
       <div>20日高値から <span class="${pctClass(fromHigh)}">${fmtPct(fromHigh)}</span></div>
       <div>5営業日前比 <span class="${pctClass(chg5)}">${fmtPct(chg5)}</span></div>

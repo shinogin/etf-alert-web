@@ -13,8 +13,8 @@
   body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 0; padding: 0 12px 80px; }
   header { position: sticky; top: 0; background: Canvas; padding: 12px 0; border-bottom: 1px solid #8883; }
   h1 { font-size: 18px; margin: 0 0 8px; }
-  nav { display: flex; gap: 8px; }
-  nav button { flex: 1; padding: 10px; border: none; border-radius: 8px; background: #8882; font-size: 14px; }
+  nav { display: flex; gap: 8px; overflow-x: auto; }
+  nav button { flex: 1 0 auto; white-space: nowrap; padding: 10px 8px; border: none; border-radius: 8px; background: #8882; font-size: 14px; }
   nav button.active { background: #333; color: #fff; }
   input[type="search"] { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #8886; margin: 8px 0; box-sizing: border-box; }
   .row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #8882; }
@@ -82,6 +82,7 @@
   <nav>
     <button data-tab="home" class="active">ホーム</button>
     <button data-tab="catalog">カタログ</button>
+    <button data-tab="screen">スクリーニング</button>
     <button data-tab="detail" style="display:none;">詳細</button>
     <button data-tab="history">通知履歴</button>
     <button data-tab="trades">売買記録</button>
@@ -148,6 +149,10 @@
     </select>
   </div>
   <div id="catalog-list"></div>
+</section>
+
+<section id="screen">
+  <div id="screen-body" class="empty">読み込み中…</div>
 </section>
 
 <section id="history">
@@ -221,6 +226,7 @@
 <script src="js/config.js"></script>
 <script src="js/app.js"></script>
 <script src="js/trades.js"></script>
+<script src="js/screen.js"></script>
 <script src="js/affiliate.js"></script>
 </body>
 </html>
