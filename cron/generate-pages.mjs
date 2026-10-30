@@ -929,6 +929,9 @@ ${urls.map((u) => `  <url><loc>${u.loc}</loc><lastmod>${today}</lastmod><changef
   // Search Consoleで sitemap.xml が8/25以降「取得できませんでした」から再試行されないため、
   // 同内容を別名でも出力し新規サイトマップとして登録する。robots.txtにも両方を記載。
   writeFileSync(`${OUT_ROOT}/sitemap-etf.xml`, sitemap);
+  // XML版は配信・書式とも正常なのに、Search Consoleでは送信直後から「取得できませんでした」が続く(10/29調査)。
+  // 書式の解釈を切り分けるため、Googleが受け付ける最も単純な形式(1行1URLのテキスト)も出す。
+  writeFileSync(`${OUT_ROOT}/sitemap.txt`, urls.map((u) => u.loc).join("\n") + "\n");
   writeFileSync(
     `${OUT_ROOT}/robots.txt`,
     `User-agent: *\nAllow: /\n\nSitemap: ${SITE_URL}/sitemap.xml\nSitemap: ${SITE_URL}/sitemap-etf.xml\n`
