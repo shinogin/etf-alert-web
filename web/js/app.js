@@ -41,13 +41,29 @@ const BROAD_INDEX_KEYWORDS = [
   "MSCI ACWI", "MSCI-KOKUSAI", "MSCIコクサイ", "MSCI コクサイ",
   "FTSE 100", "DAX", "CSI300", "MSCIエマージング", "MSCI エマージング",
 ];
+
+// 指数名は全角（「ＴＯＰＩＸ」「Ｓ＆Ｐ５００」等）や空白入りの表記があるため、
+// 全角→半角・空白除去・大文字化してから照合する（1546など主要指数ETFがテーマ扱いになっていた不具合の修正）。
+const BROAD_INDEX_EXTRA_KEYWORDS = ["ダウ・ジョーンズ工業", "日経株価指数300", "MSCIオール・カントリー"];
+// 広域指数の名前を含んでも、構成銘柄を絞った集中型はテーマ扱いにする
+const BROAD_INDEX_EXCLUDE_KEYWORDS = ["トップ"];
+function normalizeIndexName(s) {
+  return String(s || "").normalize("NFKC").replace(/\s+/g, "").toUpperCase();
+}
+function isBroadIndexName(name) {
+  const n = normalizeIndexName(name);
+  if (BROAD_INDEX_EXCLUDE_KEYWORDS.some((kw) => n.includes(normalizeIndexName(kw)))) return false;
+  return [...BROAD_INDEX_KEYWORDS, ...BROAD_INDEX_EXTRA_KEYWORDS].some((kw) =>
+    n.includes(normalizeIndexName(kw))
+  );
+}
 // 指数系/テーマ系の株式ETF向け既定値(リバウンド統計の区分にも使う)。
 // レバレッジ・インバース・コモディティは統計の対象外なのでnull。
 function categoryDefaultLevels(entry) {
   if (!entry || entry.is_leveraged || entry.is_inverse) return null;
   if (dropProfile(entry) === "commodity") return null;
   const idx = entry.index_name || "";
-  const isBroadIndex = BROAD_INDEX_KEYWORDS.some((kw) => idx.includes(kw));
+  const isBroadIndex = isBroadIndexName(idx);
   return isBroadIndex ? INDEX_DEFAULT_LEVELS : THEME_DEFAULT_LEVELS;
 }
 
