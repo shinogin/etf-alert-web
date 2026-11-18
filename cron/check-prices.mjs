@@ -92,6 +92,22 @@ const BROAD_INDEX_KEYWORDS = [
   "FTSE 100", "DAX", "CSI300", "MSCIエマージング", "MSCI エマージング",
 ];
 
+// 指数名は全角（「ＴＯＰＩＸ」「Ｓ＆Ｐ５００」等）や空白入りの表記があるため、
+// 全角→半角・空白除去・大文字化してから照合する（1546など主要指数ETFがテーマ扱いになっていた不具合の修正）。
+const BROAD_INDEX_EXTRA_KEYWORDS = ["ダウ・ジョーンズ工業", "日経株価指数300", "MSCIオール・カントリー"];
+// 広域指数の名前を含んでも、構成銘柄を絞った集中型はテーマ扱いにする
+const BROAD_INDEX_EXCLUDE_KEYWORDS = ["トップ"];
+function normalizeIndexName(s) {
+  return String(s || "").normalize("NFKC").replace(/\s+/g, "").toUpperCase();
+}
+function isBroadIndexName(name) {
+  const n = normalizeIndexName(name);
+  if (BROAD_INDEX_EXCLUDE_KEYWORDS.some((kw) => n.includes(normalizeIndexName(kw)))) return false;
+  return [...BROAD_INDEX_KEYWORDS, ...BROAD_INDEX_EXTRA_KEYWORDS].some((kw) =>
+    n.includes(normalizeIndexName(kw))
+  );
+}
+
 // 2026-10 の全ETF10年バックテストに基づく分類別の既定値:
 //  ・コモディティ / インバース型: 下落時に買っても優位性がないため、既定では通知しない(空配列)。
 //  ・株式2倍型: -7%以上の急落で優位性が大きいので、深い下げだけ通知する。
@@ -112,7 +128,7 @@ function categoryDefaultLevels(catalogEntry) {
   if (catalogEntry.is_inverse || isCommodity(catalogEntry)) return NO_ALERT_LEVELS;
   if (catalogEntry.is_leveraged) return LEVERAGED_EQUITY_LEVELS;
   const indexName = catalogEntry.index_name || "";
-  const isBroadIndex = BROAD_INDEX_KEYWORDS.some((kw) => indexName.includes(kw));
+  const isBroadIndex = isBroadIndexName(indexName);
   return isBroadIndex ? INDEX_DEFAULT_LEVELS : THEME_DEFAULT_LEVELS;
 }
 

@@ -85,11 +85,27 @@ const BROAD_INDEX_KEYWORDS = [
   "FTSE 100", "DAX", "CSI300", "MSCIエマージング", "MSCI エマージング",
 ];
 
+// 指数名は全角（「ＴＯＰＩＸ」「Ｓ＆Ｐ５００」等）や空白入りの表記があるため、
+// 全角→半角・空白除去・大文字化してから照合する（1546など主要指数ETFがテーマ扱いになっていた不具合の修正）。
+const BROAD_INDEX_EXTRA_KEYWORDS = ["ダウ・ジョーンズ工業", "日経株価指数300", "MSCIオール・カントリー"];
+// 広域指数の名前を含んでも、構成銘柄を絞った集中型はテーマ扱いにする
+const BROAD_INDEX_EXCLUDE_KEYWORDS = ["トップ"];
+function normalizeIndexName(s) {
+  return String(s || "").normalize("NFKC").replace(/\s+/g, "").toUpperCase();
+}
+function isBroadIndexName(name) {
+  const n = normalizeIndexName(name);
+  if (BROAD_INDEX_EXCLUDE_KEYWORDS.some((kw) => n.includes(normalizeIndexName(kw)))) return false;
+  return [...BROAD_INDEX_KEYWORDS, ...BROAD_INDEX_EXTRA_KEYWORDS].some((kw) =>
+    n.includes(normalizeIndexName(kw))
+  );
+}
+
 function categoryDefaultLevels(entry) {
   // レバレッジ・インバース型は値動きの性質が異なるためバックテスト対象外
   if (!entry || entry.is_leveraged || entry.is_inverse) return null;
   const idx = entry.index_name || "";
-  const isBroadIndex = BROAD_INDEX_KEYWORDS.some((kw) => idx.includes(kw));
+  const isBroadIndex = isBroadIndexName(idx);
   return isBroadIndex ? INDEX_DEFAULT_LEVELS : THEME_DEFAULT_LEVELS;
 }
 
@@ -265,12 +281,33 @@ async function fetchOwnHistory(code) {
     if (!r) return null;
     const ts = r.timestamp || [];
     const px = r.indicators?.adjclose?.[0]?.adjclose || r.indicators?.quote?.[0]?.close || [];
-    return ts
+    const rows = ts
       .map((t, i) => ({ d: new Date(t * 1000).toISOString().slice(0, 10), c: px[i] }))
       .filter((x) => x.c != null && x.c > 0);
+    return dropPriceSpikes(rows);
   } catch (e) {
     return null;
   }
+}
+
+// 分割前後の数日だけYahooの価格が1/50〜1/400などに飛ぶ例がある（1546・1328で確認）。
+// 前後5営業日の中央値から±40%以上外れた値は統計に使わない。
+function dropPriceSpikes(rows) {
+  const clean = rows.filter((x, i) => {
+    const win = rows.slice(Math.max(0, i - 5), i + 6).map((r) => r.c).sort((a, b) => a - b);
+    const med = win[Math.floor(win.length / 2)];
+    return med > 0 && Math.abs(x.c / med - 1) < 0.4;
+  });
+  // 分割前の価格が調整されずに残っている場合（1546で確認）、1日で半分以下／2倍以上に
+  // 飛んだ箇所を分割・併合とみなし、それより前の価格をその比率で割り戻して連続させる。
+  const out = clean.map((x) => ({ ...x }));
+  for (let i = out.length - 1; i > 0; i--) {
+    const r = out[i].c / out[i - 1].c;
+    if (r < 0.55 || r > 1.8) {
+      for (let j = 0; j < i; j++) out[j].c *= r;
+    }
+  }
+  return out;
 }
 
 function ownDropStats(rows, threshold) {
@@ -323,26 +360,45 @@ async function fetchSplits(code) {
   }
 }
 
+// 運用会社の公式発表にもとづく受益権分割（効力発生日）。ここにある銘柄はYahooより優先する。
+// 出典: 1489 nextfunds.jp/news/2024/pd_231129a.html、その他 nextfunds.jp/data/2026/td_260825a.pdf
+const KNOWN_SPLITS = {
+  "1489": [{ date: "2024-01-19", num: 30, den: 1 }],
+  "1321": [{ date: "2026-10-07", num: 100, den: 1 }],
+  "1328": [{ date: "2026-11-02", num: 50, den: 1 }],
+  "1546": [{ date: "2026-11-06", num: 400, den: 1 }],
+  "1577": [{ date: "2027-02-01", num: 200, den: 1 }],
+  "1591": [{ date: "2027-02-01", num: 100, den: 1 }],
+  "1570": [{ date: "2027-03-01", num: 50, den: 1 }],
+};
+
 function splitSection(entry, own) {
-  if (!own || own.splits == null) return "";
+  const known = KNOWN_SPLITS[entry.code];
+  const splits = known ? [...known].sort((a, b) => (a.date < b.date ? 1 : -1)) : own && own.splits;
+  if (!splits) return "";
   const name = esc(entry.name);
+  const todayStr = new Date().toISOString().slice(0, 10);
   // Yahooの分割データは欠落があるため（例: 1489の2024年分割が未収録）、
   // 「分割なし」とは断定せず、記録が確認できた銘柄だけ表示する。
-  if (!own.splits.length) return "";
-  const rows = own.splits
+  if (!splits.length) return "";
+  const hasPlanned = splits.some((s) => s.date > todayStr);
+  const rows = splits
     .map((s) => {
       const isSplit = s.num > s.den;
       const r = isSplit ? s.num / s.den : s.den / s.num;
       const rText = Number.isInteger(r) ? r : r.toFixed(2);
-      return `  <tr><td>${s.date}</td><td>${isSplit ? "分割" : "併合"}</td><td>${
+      const planned = s.date > todayStr ? "（予定）" : "";
+      return `  <tr><td>${s.date}${planned}</td><td>${isSplit ? "分割" : "併合"}</td><td>${
         isSplit ? `1口 → ${rText}口` : `${rText}口 → 1口`
       }</td></tr>`;
     })
     .join("\n");
   return `<h2>受益権分割の履歴</h2>
-<p style="font-size:13px;">${name}（${esc(entry.code)}）では、次の受益権分割・併合が行われています。分割すると1口あたりの価格が下がり、少ない金額から買えるようになります。保有している口数は増えますが、資産の価値は変わりません。</p>
+<p style="font-size:13px;">${name}（${esc(entry.code)}）では、次の受益権分割・併合が${
+    splits.every((s) => s.date > todayStr) ? "予定されて" : hasPlanned ? "実施・予定されて" : "行われて"
+  }います。分割すると1口あたりの価格が下がり、少ない金額から買えるようになります。保有している口数は増えますが、資産の価値は変わりません。</p>
 <table>
-  <tr><th style="width:auto;">実施日</th><th>種類</th><th>比率</th></tr>
+  <tr><th style="width:auto;">効力発生日</th><th>種類</th><th>比率</th></tr>
 ${rows}
 </table>
 <p style="font-size:12px;opacity:0.6;">このページの下落統計は、分割の影響を除いた調整後の価格で計算しています。最新の情報は運用会社の発表をご確認ください。</p>`;
